@@ -1,28 +1,33 @@
 #include <vector>
+#include <string>
 #include <math.h>
+#include <yaml-cpp/yaml.h>
+
 #include <itkImage.h>
 #include <itkImageFileReader.h>
 #include <itkImageFileWriter.h>
 #include <itkBSplineInterpolateImageFunction.h>
+#include "itkLinearInterpolateImageFunction.h"
 #include <itkFlipImageFilter.h>
 #include <itkRescaleIntensityImageFilter.h>
 #include <itkSubtractImageFilter.h>
 #include <itkCastImageFilter.h>
+#include <itkDiscreteGaussianImageFilter.h>
 #include "itkDivideImageFilter.h"
 #include "itkImageRegionIteratorWithIndex.h"
+#include <itkImageDuplicator.h>
 #include "itkImageRegionIterator.h"
 #include "itkStatisticsImageFilter.h"
 #include <itkBoxImageFilter.h>
 #include <rtkThreeDCircularProjectionGeometry.h>
 #include "rtkThreeDCircularProjectionGeometryXMLFile.h"
 #include <itkMultiplyImageFilter.h>
-#include <rtkForwardProjectionImageFilter.h>
-#include <rtkConstantImageSource.h>
-#include <rtkFDKConeBeamReconstructionFilter.h>
 
 // Define the image types
 typedef itk::Image<float, 3> ImageType; // Assuming your images are 3D and of type float
 typedef itk::Image<float, 2> ImageType2D;
+using Image1DType = itk::Image<float, 1>;
+typedef itk::ImageFileWriter<ImageType> WriterType;
 
 void ReadImageProperties(std::string filename)
 {
@@ -116,7 +121,7 @@ ImageType::Pointer ReadMHA(const std::string &filename)
 
 // This is the function for 2D BSpline interpolation function. Outputs the 3DImage MHA file containing the interpolated values.
 
-ImageType::Pointer ScatterCorrection(ImageType::Pointer scatterImage3D)
+ImageType::Pointer ScatterEstimation(ImageType::Pointer scatterImage3D)
 {
     // Get the size of the 3D image
     itk::Size<3> size3D = scatterImage3D->GetLargestPossibleRegion().GetSize();
@@ -179,6 +184,36 @@ ImageType::Pointer ScatterCorrection(ImageType::Pointer scatterImage3D)
     return scatterEstimate;
 }
 
+typedef itk::DiscreteGaussianImageFilter<ImageType, ImageType> GaussFilterType;
+void LateralSmoothing(ImageType::Pointer &scatterEstimate, double variance)
+{
+    GaussFilterType::Pointer filter = GaussFilterType::New();
+    filter->SetInput(scatterEstimate);
+
+    GaussFilterType::ArrayType varianceArray;
+    varianceArray[0] = variance; // x-direction variance
+    varianceArray[1] = variance; // y-direction variance
+    varianceArray[2] = 0;        // z-direction variance (no smoothing)
+    filter->SetVariance(varianceArray);
+
+    try
+    {
+        filter->Update();
+    }
+    catch (itk::ExceptionObject &error)
+    {
+        std::cerr << "Error: " << error << std::endl;
+        return; // Handle error appropriately
+    }
+
+    typedef itk::ImageDuplicator<ImageType> DuplicatorType;
+    DuplicatorType::Pointer duplicator = DuplicatorType::New();
+    duplicator->SetInputImage(filter->GetOutput());
+    duplicator->Update();
+
+    scatterEstimate = duplicator->GetOutput();
+}
+
 // Function to extract a row or column from a 2D ITK Image
 // 'direction' is 0 for row, 1 for column.
 // 'index' is the index of the row or column to extract.
@@ -219,17 +254,34 @@ std::vector<float> extractLine(itk::Image<float, 2>::Pointer image, unsigned dir
     return lineValues;
 }
 
-double interpolateAtPoint(const itk::Image<float, 2>::ConstPointer &image, itk::Image<float, 2>::PointType &point)
+double interpolateAtPoint(const std::vector<float> &columnData, float y)
 {
     // Define the image type using float pixels and 2 dimensions
-    using ImageType = itk::Image<float, 2>;
-    using ConstImagePointer = ImageType::ConstPointer;
+    using ImageType = itk::Image<float, 1>;
+    using ImagePointer = ImageType::Pointer;
     using InterpolatorType = itk::BSplineInterpolateImageFunction<ImageType, double, double>;
+
+    // Create a new 1D ITK image for the column data
+    auto columnImage = ImageType::New();
+    itk::Size<1> size = {columnData.size()};
+    columnImage->SetRegions(size);
+    columnImage->Allocate();
+
+    // Copy the column data to the 1D ITK image
+    itk::ImageRegionIterator<ImageType> it(columnImage, columnImage->GetLargestPossibleRegion());
+    for (unsigned int i = 0; !it.IsAtEnd(); ++i, ++it)
+    {
+        it.Set(columnData[i]);
+    }
 
     // Set up the interpolator
     InterpolatorType::Pointer interpolator = InterpolatorType::New();
     interpolator->SetSplineOrder(3); // Set the order of the spline, e.g. 3 for cubic
-    interpolator->SetInputImage(image);
+    interpolator->SetInputImage(columnImage);
+
+    // Create the point for the y-coordinate
+    ImageType::PointType point;
+    point[0] = y;
 
     // Check if the point is inside the image
     if (interpolator->IsInsideBuffer(point))
@@ -242,27 +294,64 @@ double interpolateAtPoint(const itk::Image<float, 2>::ConstPointer &image, itk::
     {
         throw std::invalid_argument("Point is outside the image!");
     }
+}
 
-    /*EXAMPLE: Assume 'image' is an ImageType::Pointer and 'point' is an ImageType::PointType
-    try {
-        double value = interpolateAtPoint(image, point);
-        std::cout << "Interpolated value: " << value << std::endl;
-    } catch (const std::invalid_argument &e) {
-        std::cerr << e.what() << std::endl;
+void InterpolateColumns(itk::Image<float, 3>::Pointer scatterImage3D, itk::ImageRegion<3> exclusionRegion)
+{
+    // Get the size of the 3D image
+    itk::Size<3> size3D = scatterImage3D->GetLargestPossibleRegion().GetSize();
+
+    // Loop through each slice in the 3D image
+    for (unsigned int z = 0; z < size3D[2]; ++z)
+    {
+        // Loop through each column in the 2D slice
+        for (unsigned int x = 0; x < size3D[0]; ++x)
+        {
+            std::vector<float> columnData;
+
+            // Loop through each row in the column
+            for (unsigned int y = 0; y < size3D[1]; ++y)
+            {
+                itk::Image<float, 3>::IndexType index3D;
+                index3D[0] = x;
+                index3D[1] = y;
+                index3D[2] = z;
+
+                // If the current index is outside the exclusion region, add it to the column data
+                if (!exclusionRegion.IsInside(index3D))
+                {
+                    columnData.push_back(scatterImage3D->GetPixel(index3D));
+                }
+            }
+
+            // Now loop again through the rows, but this time to fill in the missing data in the exclusion region
+            for (unsigned int y = exclusionRegion.GetIndex()[1]; y < exclusionRegion.GetIndex()[1] + exclusionRegion.GetSize()[1]; ++y)
+            {
+                try
+                {
+                    // Interpolate the missing pixel value
+                    float interpolatedValue = interpolateAtPoint(columnData, y);
+
+                    // Replace the pixel value in the original 3D image
+                    itk::Image<float, 3>::IndexType index3D;
+                    index3D[0] = x;
+                    index3D[1] = y;
+                    index3D[2] = z;
+                    scatterImage3D->SetPixel(index3D, interpolatedValue);
+                }
+                catch (const std::invalid_argument &e)
+                {
+                    std::cerr << e.what() << std::endl;
+                }
+            }
+        }
     }
-    */
 }
 
 // Causal recursive filter
-ImageType::Pointer CausalRecursiveFilter(ImageType::Pointer inputImage, float theta)
+void CausalRecursiveFilter(ImageType::Pointer inputImage, float theta)
 {
     typedef itk::ImageRegionIterator<ImageType> IteratorType;
-
-    ImageType::Pointer outputImage = ImageType::New();
-    outputImage->CopyInformation(inputImage);
-    outputImage->SetRegions(inputImage->GetLargestPossibleRegion());
-    outputImage->Allocate();
-    outputImage->FillBuffer(0);
 
     itk::Size<3> size = inputImage->GetLargestPossibleRegion().GetSize();
 
@@ -276,43 +365,14 @@ ImageType::Pointer CausalRecursiveFilter(ImageType::Pointer inputImage, float th
                 ImageType::IndexType index = {x, y, z};
                 double currentValue = inputImage->GetPixel(index);
                 double outputValue = theta * currentValue + (1 - theta) * previousValue;
-                outputImage->SetPixel(index, outputValue);
+                inputImage->SetPixel(index, outputValue);
                 previousValue = outputValue;
             }
         }
     }
-
-    return outputImage;
 }
 
 // Non-causal, forward-backward filter
-/*ImageType::Pointer ForwardBackwardFilter(ImageType::Pointer image, unsigned int width)
-{
-    // Apply forward filter
-    ImageType::Pointer forward = CausalRecursiveFilter(image, 1.0f / width);
-
-    // Reverse the image
-    typedef itk::FlipImageFilter<ImageType> FlipImageFilterType;
-    FlipImageFilterType::Pointer flipFilter = FlipImageFilterType::New();
-    FlipImageFilterType::FlipAxesArrayType flipAxes;
-    flipAxes[0] = false;
-    flipAxes[1] = false;
-    flipAxes[2] = true; // Flip in Z direction
-    flipFilter->SetFlipAxes(flipAxes);
-    flipFilter->SetInput(forward);
-    flipFilter->Update();
-    ImageType::Pointer reversed = flipFilter->GetOutput();
-
-    // Apply backward filter
-    ImageType::Pointer backward = CausalRecursiveFilter(reversed, 1.0f / width);
-
-    // Reverse the image back
-    flipFilter->SetInput(backward);
-    flipFilter->Update();
-
-    return flipFilter->GetOutput();
-}/**/
-
 ImageType::Pointer NonCausalFilter(ImageType::Pointer inputImage, int kernelWidth)
 {
     typedef itk::BoxImageFilter<ImageType, ImageType> MeanFilterType;
@@ -454,157 +514,538 @@ double CalculateStandardDeviation(itk::Image<float, 3>::Pointer image)
     return statsFilter->GetSigma();
 }
 
-int main()
+ImageType::Pointer ConcatenateImages(ImageType::Pointer image1, ImageType::Pointer image2, ImageType::SizeType concatSize)
 {
+    ImageType::RegionType region1 = image1->GetLargestPossibleRegion();
+    ImageType::RegionType region2 = image2->GetLargestPossibleRegion();
+    ImageType::SizeType size1 = region1.GetSize();
+    ImageType::SizeType size2 = region2.GetSize();
+
+    long totalNumberOfPixels1 = size1[0] * size1[1] * size1[2];
+    long totalNumberOfPixels2 = size2[0] * size2[1] * size2[2];
+
+    std::vector<float> concatVector;
+    std::vector<float> pixelValues1(image1->GetBufferPointer(), image1->GetBufferPointer() + totalNumberOfPixels1);
+    std::vector<float> pixelValues2(image2->GetBufferPointer(), image2->GetBufferPointer() + totalNumberOfPixels2);
+
+    concatVector.insert(concatVector.end(), pixelValues1.begin(), pixelValues1.end());
+    concatVector.insert(concatVector.end(), pixelValues2.begin(), pixelValues2.end());
+
+    // Create an image.
+    ImageType::Pointer concatImage = ImageType::New();
+
+    // Define the region.
+    ImageType::RegionType region;
+    region.SetSize(concatSize);
+
+    // Set the region and allocate memory for the image.
+    concatImage->SetRegions(region);
+    concatImage->Allocate();
+
+    // Copy the data from the vector to the image.
+    std::copy(concatVector.begin(), concatVector.end(), concatImage->GetBufferPointer());
+
+    return concatImage;
+}
+
+ImageType::Pointer ConcatenateMultipleImages(std::vector<std::string> filenames)
+{
+    // Assume that the images have the same size.
+    ImageType::Pointer image1 = ReadMHA(filenames[0]);
+    ImageType::SizeType concatSize = image1->GetLargestPossibleRegion().GetSize();
+
+    // Keep track of the current concatenated image.
+    ImageType::Pointer currentImage = image1;
+
+    for (int i = 1; i < filenames.size(); i++)
+    {
+        // Read the next image.
+        ImageType::Pointer image2 = ReadMHA(filenames[i]);
+
+        // Concatenate the current image with the next image.
+        ImageType::SizeType newSize;
+        newSize[0] = concatSize[0];
+        newSize[1] = concatSize[1];
+        newSize[2] = concatSize[2] + image2->GetLargestPossibleRegion().GetSize()[2];
+        currentImage = ConcatenateImages(currentImage, image2, newSize);
+
+        // Update the size for the next concatenation.
+        concatSize = newSize;
+    }
+
+    return currentImage;
+}
+
+using BSplineInterpolatorType = itk::BSplineInterpolateImageFunction<Image1DType>;
+using LinearInterpolatorType = itk::LinearInterpolateImageFunction<Image1DType>;
+
+// Function to interpolate a 1D image at a specified position
+float interpolate1D(Image1DType::Pointer image, Image1DType::IndexType idx, int interpolationOrder)
+{
+    if (interpolationOrder == 1)
+    {
+        LinearInterpolatorType::Pointer interpolator = LinearInterpolatorType::New();
+        interpolator->SetInputImage(image);
+        return interpolator->EvaluateAtIndex(idx);
+    }
+    else
+    {
+        BSplineInterpolatorType::Pointer interpolator = BSplineInterpolatorType::New();
+        interpolator->SetSplineOrder(interpolationOrder);
+        interpolator->SetInputImage(image);
+        return interpolator->EvaluateAtIndex(idx);
+    }
+}
+
+/*void estimateUnknownRows(ImageType::Pointer image, int startUnknownRow, int endUnknownRow, int interpolationOrder)
+{
+    ImageType::SizeType imageSize = image->GetLargestPossibleRegion().GetSize();
+
+    for (int sliceIdx = 0; sliceIdx < imageSize[2]; ++sliceIdx)
+    {
+        for (int colIdx = 0; colIdx < imageSize[0]; ++colIdx)
+        {
+            Image1DType::Pointer columnImage = Image1DType::New();
+            Image1DType::RegionType region1D;
+            Image1DType::IndexType start1D;
+            Image1DType::SizeType size1D;
+
+            start1D[0] = 0;
+            size1D[0] = imageSize[1] - (endUnknownRow - startUnknownRow + 1); // Exclude the unknown rows
+            region1D.SetSize(size1D);
+            region1D.SetIndex(start1D);
+            columnImage->SetRegions(region1D);
+            columnImage->Allocate();
+
+            // Copy the known values to the 1D image
+            int dstIdx = 0;
+            for (int rowIdx = 0; rowIdx < imageSize[1]; ++rowIdx)
+            {
+                if (rowIdx < startUnknownRow || rowIdx > endUnknownRow)
+                {
+                    ImageType::IndexType srcIdx = {{colIdx, rowIdx, sliceIdx}};
+                    Image1DType::IndexType dstIdx1D = {{dstIdx}};
+                    columnImage->SetPixel(dstIdx1D, image->GetPixel(srcIdx));
+                    ++dstIdx;
+                }
+            }
+
+            // Interpolate the unknown values
+            for (int rowIdx = startUnknownRow; rowIdx <= endUnknownRow; ++rowIdx)
+            {
+                Image1DType::IndexType idx1D = {{rowIdx - startUnknownRow}};
+                float interpolatedValue = interpolate1D(columnImage, idx1D, interpolationOrder);
+
+                // Insert the interpolated value back into the original image
+                ImageType::IndexType idx3D = {{colIdx, rowIdx, sliceIdx}};
+                image->SetPixel(idx3D, interpolatedValue);
+            }
+        }
+    }
+} /**/
+
+std::vector<float> estimateUnknownValues(const std::vector<float> &values, const std::vector<int> &unknownIndices, int order)
+{
+    // Collect known data
+    std::vector<float> knownValues;
+    std::vector<int> knownIndices;
+    for (int i = 0; i < values.size(); ++i)
+    {
+        if (std::find(unknownIndices.begin(), unknownIndices.end(), i) == unknownIndices.end())
+        {
+            knownValues.push_back(values[i]);
+            knownIndices.push_back(i);
+        }
+    }
+
+    // Build the Vandermonde matrix
+    Eigen::MatrixXf X(knownIndices.size(), order + 1);
+    for (int i = 0; i < knownIndices.size(); ++i)
+    {
+        for (int j = 0; j <= order; ++j)
+        {
+            X(i, j) = std::pow(knownIndices[i], j);
+        }
+    }
+
+    // Build the y vector
+    Eigen::VectorXf y(knownValues.size());
+    for (int i = 0; i < knownValues.size(); ++i)
+    {
+        y[i] = knownValues[i];
+    }
+
+    // Solve for the polynomial coefficients
+    Eigen::VectorXf coeffs = X.jacobiSvd(Eigen::ComputeThinU | Eigen::ComputeThinV).solve(y);
+
+    // Estimate the unknown values
+    std::vector<float> estimatedValues = values;
+    for (int i : unknownIndices)
+    {
+        float estimate = 0.0f;
+        for (int j = 0; j <= order; ++j)
+        {
+            estimate += coeffs[j] * std::pow(i, j);
+        }
+        estimatedValues[i] = estimate;
+    }
+
+    return estimatedValues;
+}
+
+using IndexType = ImageType::IndexType;
+
+void estimateUnknownRows(ImageType::Pointer image, int startUnknownRow, int endUnknownRow, int order)
+{
+    ImageType::SizeType imageSize = image->GetLargestPossibleRegion().GetSize();
+    for (int sliceIdx = 0; sliceIdx < imageSize[2]; ++sliceIdx)
+    {
+        for (int colIdx = 0; colIdx < imageSize[0]; ++colIdx)
+        {
+            // Collect the known and unknown values for this column
+            std::vector<float> values(imageSize[1]);
+            std::vector<int> unknownIndices;
+            for (int rowIdx = 0; rowIdx < imageSize[1]; ++rowIdx)
+            {
+                IndexType index = {{colIdx, rowIdx, sliceIdx}};
+                values[rowIdx] = image->GetPixel(index);
+                if (rowIdx >= startUnknownRow && rowIdx <= endUnknownRow)
+                {
+                    unknownIndices.push_back(rowIdx);
+                }
+            }
+
+            // Estimate the unknown values
+            std::vector<float> estimatedValues = estimateUnknownValues(values, unknownIndices, order);
+
+            // Set the estimated values
+            for (int rowIdx = startUnknownRow; rowIdx <= endUnknownRow; ++rowIdx)
+            {
+                IndexType index = {{colIdx, rowIdx, sliceIdx}};
+                image->SetPixel(index, estimatedValues[rowIdx]);
+            }
+        }
+    }
+}
+
+int main(int argc, char *argv[])
+{
+    std::cout << "Checkpoint 1" << std::endl;
+    if (argc < 1)
+    {
+        std::cerr << "Usage: " << argv[0] << " <string> <integer>\n";
+        return 1;
+    }
+
+    bool boosted = false; // Default: Don't boost
+
+    // Loop through command line arguments
+    for (int i = 1; i < argc; i++)
+    {
+        std::string arg = argv[i];
+
+        if (arg == "boosted")
+        {
+            boosted = true;
+        }
+    }
+
+    /////////////////////////////////////////////////////////
+    ///////////////////// READ CT Params ////////////////////
+    std::string pathToConfig = "/home/tunok/Work/mcDataIO_main/tests/output/simulParams.txt";
+    YAML::Node configFile = YAML::LoadFile(pathToConfig);
+    int nPhotons = configFile["nPhotons"].as<int>();
+    float SAD = configFile["SAD"].as<float>();
+    float SDD = configFile["SDD"].as<float>();
+    float SCD = configFile["SCD"].as<float>();
+    float SPD = configFile["SPD"].as<float>();
+    float PixelPitch = configFile["PixelPitch"].as<float>();
+    int nProjections = configFile["nProjections"].as<int>();
+
+
+    std::cout << "nPhotons: " << nPhotons << std::endl;
+    std::cout << "SAD: " << SAD << std::endl;
+    std::cout << "SDD: " << SDD << std::endl;
+    std::cout << "SCD: " << SCD << std::endl;
+    std::cout << "SPD: " << SPD << std::endl;
+    std::cout << "PixelPitch: " << PixelPitch << std::endl;
+    std::cout << "nProjections: " << nProjections << std::endl;
+    ///////////////////// READ CT Params ////////////////////
+    /////////////////////////////////////////////////////////
+
     /////////////////////////////////////////////////////////
     //////////////////// READ IMAGE FILES ///////////////////
-    bool boosted = true; // if false, processes the unboosted images
-    if (true)            // this is to execute the image process section or not (for now)
+    if (false) // this is to execute the image process section or to calculate CNR values
     {
         ImageType::Pointer totalImage;
         ImageType::Pointer scatterImage;
         ImageType::Pointer floodImage;
-        if (!boosted)
+
+        ////////////////////////////////////////////////////////
+        ///////////////////// CONCATENATE //////////////////////
+        ImageType::SizeType concatSize;
+        concatSize[0] = 250; // size in x-direction
+        concatSize[1] = 250; // size in y-direction
+        concatSize[2] = 401; // size in z-direction
+
+        std::cout << "Concatenating Images ... " << std::endl;
+
+        if (boosted)
         {
-            // TOTAL IMAGE
-            totalImage = ReadMHA("/home/tunok/Work/mcDataIO_main/tests/output/totalUnboostedImage500000000.mha");
-            // SCATTER IMAGE
-            scatterImage = ReadMHA("/home/tunok/Work/mcDataIO_main/tests/output/scatterUnboostedImage500000000.mha");
-            // FLOOD IMAGE
-            floodImage = ReadMHA("/home/tunok/Work/mcDataIO_main/tests/output/floodUnboostedImage500000000.mha");
+            std::vector<std::string> totalBoostedImageFilenames;
+            totalBoostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/Set300000000Projection5,6/totalBoostedImage300000000Projection5.mha");
+            totalBoostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/Set300000000Projection5,6/totalBoostedImage300000000Projection6.mha");
+            // totalBoostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/Set300000000Projection5,6,7,8/totalBoostedImage300000000Projection7.mha");
+            // totalBoostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/Set300000000Projection5,6,7,8/totalBoostedImage300000000Projection8.mha");
+
+            std::vector<std::string> scatterBoostedImageFilenames;
+            scatterBoostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/Set300000000Projection5,6/scatterBoostedImage300000000Projection5.mha");
+            scatterBoostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/Set300000000Projection5,6/scatterBoostedImage300000000Projection6.mha");
+            // scatterBoostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/Set300000000Projection5,6,7,8/scatterBoostedImage300000000Projection7.mha");
+            // scatterBoostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/Set300000000Projection5,6,7,8/scatterBoostedImage300000000Projection8.mha");
+
+            std::vector<std::string> floodBoostedImageFilenames;
+            floodBoostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/Set300000000Projection5,6/floodBoostedImage300000000Projection5.mha");
+            floodBoostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/Set300000000Projection5,6/floodBoostedImage300000000Projection6.mha");
+            // floodBoostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/Set300000000Projection5,6,7,8/floodBoostedImage300000000Projection7.mha");
+            // floodBoostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/Set300000000Projection5,6,7,8/floodBoostedImage300000000Projection8.mha");
+
+            totalImage = ConcatenateMultipleImages(totalBoostedImageFilenames);
+            scatterImage = ConcatenateMultipleImages(scatterBoostedImageFilenames);
+            floodImage = ConcatenateMultipleImages(floodBoostedImageFilenames);
         }
         else
         {
-            // TOTAL BOOSTED IMAGE
-            totalImage = ReadMHA("/home/tunok/Work/mcDataIO_main/tests/output/totalBoostedImage500000000.mha");
-            // SCATTER BOOSTED IMAGE
-            scatterImage = ReadMHA("/home/tunok/Work/mcDataIO_main/tests/output/scatterBoostedImage500000000.mha");
-            // FLOOD BOOSTED IMAGE
-            floodImage = ReadMHA("/home/tunok/Work/mcDataIO_main/tests/output/floodBoostedImage500000000.mha");
+            std::vector<std::string> totalUnboostedImageFilenames;
+            totalUnboostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/Set300000000Projection5,6/totalUnboostedImage300000000Projection5.mha");
+            totalUnboostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/Set300000000Projection5,6/totalUnboostedImage300000000Projection6.mha");
+            // totalUnboostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/Set300000000Projection5,6,7,8/totalUnboostedImage300000000Projection7.mha");
+            // totalUnboostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/Set300000000Projection5,6,7,8/totalUnboostedImage300000000Projection8.mha");
+
+            std::vector<std::string> scatterUnboostedImageFilenames;
+            scatterUnboostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/Set300000000Projection5,6/scatterUnboostedImage300000000Projection5.mha");
+            scatterUnboostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/Set300000000Projection5,6/scatterUnboostedImage300000000Projection6.mha");
+            // scatterUnboostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/Set300000000Projection5,6,7,8/scatterUnboostedImage300000000Projection7.mha");
+            // scatterUnboostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/Set300000000Projection5,6,7,8/scatterUnboostedImage300000000Projection8.mha");
+
+            std::vector<std::string> floodUnboostedImageFilenames;
+            floodUnboostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/Set300000000Projection5,6/floodUnboostedImage300000000Projection5.mha");
+            floodUnboostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/Set300000000Projection5,6/floodUnboostedImage300000000Projection6.mha");
+            // floodUnboostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/Set300000000Projection5,6,7,8/floodUnboostedImage300000000Projection7.mha");
+            // floodUnboostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/Set300000000Projection5,6,7,8/floodUnboostedImage300000000Projection8.mha");
+
+            totalImage = ConcatenateMultipleImages(totalUnboostedImageFilenames);
+            scatterImage = ConcatenateMultipleImages(scatterUnboostedImageFilenames);
+            floodImage = ConcatenateMultipleImages(floodUnboostedImageFilenames);
         }
 
-        /**/
+        // Define the writer type
+        using WriterType = itk::ImageFileWriter<ImageType>;
+        WriterType::Pointer writer = WriterType::New();
+
+        if (boosted)
+        {
+            writer->SetFileName("/home/tunok/Work/imgProcess_main/tests/totalBoosted.mha");
+            writer->SetInput(totalImage);
+            writer->Update();
+            std::cout << "Writing File Out: totalBoosted.mha" << std::endl;
+
+            writer->SetFileName("/home/tunok/Work/imgProcess_main/tests/scatterBoosted.mha");
+            writer->SetInput(scatterImage);
+            writer->Update();
+            std::cout << "Writing File Out: scatterBoosted.mha" << std::endl;
+
+            writer->SetFileName("/home/tunok/Work/imgProcess_main/tests/floodBoosted.mha");
+            writer->SetInput(floodImage);
+            writer->Update();
+            std::cout << "Writing File Out: floodBoosted.mha" << std::endl;
+        }
+        else
+        {
+            writer->SetFileName("/home/tunok/Work/imgProcess_main/tests/totalUnboosted.mha");
+            writer->SetInput(totalImage);
+            writer->Update();
+            std::cout << "Writing File Out: totalUnboosted.mha" << std::endl;
+
+            writer->SetFileName("/home/tunok/Work/imgProcess_main/tests/scatterUnboosted.mha");
+            writer->SetInput(scatterImage);
+            writer->Update();
+            std::cout << "Writing File Out: scatterUnboosted.mha" << std::endl;
+
+            writer->SetFileName("/home/tunok/Work/imgProcess_main/tests/floodUnboosted.mha");
+            writer->SetInput(floodImage);
+            writer->Update();
+            std::cout << "Writing File Out: floodUnboosted.mha" << std::endl;
+        }
+        ///////////////////// CONCATENATE //////////////////////
+        ////////////////////////////////////////////////////////
+
         //////////////////// READ IMAGE FILES ///////////////////
         /////////////////////////////////////////////////////////
 
         /////////////////////////////////////////////////////////
         //////////////////// SCATTER ESTIMATE ///////////////////
+        // Define the ROI region (that is a misrepresentation region of the scatter signal i.e. we want to exclude this region
+        // Create a copy of the scatter image
+        typedef itk::ImageDuplicator<ImageType> DuplicatorType;
+        DuplicatorType::Pointer duplicator = DuplicatorType::New();
+        duplicator->SetInputImage(scatterImage);
+        duplicator->Update();
+        ImageType::Pointer scatterEst = duplicator->GetOutput();
 
-        /*// Scatter Estimate by doing BSPLINE 2D INTERPOLATION of each individual slice
-        ImageType::Pointer scatterEst = ScatterCorrection(scatterImage);
+        // If boosting, then estimate scatter
+        if (boosted)
+        {
+            // Estimate the values in the unknown region
+            std::cout << "Interpolating ... " << std::endl;
+            // Define the start and end rows of the unknown region
+            int startUnknownRow = 100;
+            int endUnknownRow = 200;
+            int interpolationOrder = 4;
+            estimateUnknownRows(scatterEst, startUnknownRow, endUnknownRow, interpolationOrder);
+            std::cout << "Done interpolating ... " << std::endl;
 
-        // Further Scatter Estimate by doing PROJECTION-TO-PROJECTION-SMOOTHING by theta_filter
-        float theta_filt = 1.0f; // Choose your filter parameter
-        unsigned int width = 2;  // Choose your filter width
-        ImageType::Pointer smoothedScatterEstimate = CausalRecursiveFilter(scatterEst, theta_filt);
-        // ImageType::Pointer smoothedScatterEstimate = NonCausalFilter(scatterEst, width);/**/
+            // Lateral Smoothing of ScatterEstimation
+            std::cout << "Lateral Smoothing Scatter ... " << std::endl;
+            double variance = 5;
+            LateralSmoothing(scatterEst, variance);
+
+            // Further Scatter Estimate by doing PROJECTION-TO-PROJECTION-SMOOTHING by theta_filter
+            std::cout << "Projection-To-Projection Smoothing Scatter ... " << std::endl;
+            float theta_filt = 1.0f; // 0 - <1: Causal 1 - 40: Non-causal
+            unsigned int width = 2;  // Choose your filter width
+            CausalRecursiveFilter(scatterEst, theta_filt);
+            // ImageType::Pointer scatterEst = NonCausalFilter(scatterLatSmooth, width); /**/
+            writer->SetFileName("/home/tunok/Work/imgProcess_main/tests/scatterEst.mha");
+            writer->SetInput(scatterEst);
+            writer->Update();
+            std::cout << "Writing File Out: scatterEst.mha" << std::endl;
+        }
         //////////////////// SCATTER ESTIMATE ///////////////////
         /////////////////////////////////////////////////////////
 
         /////////////////////////////////////////////////////////
         //////////////////// IMAGE CORRECTION ///////////////////
 
+        std::cout << "Scatter Correcting Original Images ... " << std::endl;
         //// Correcting Scatter Image by Scatter Estimate ////
         using SubtractFilterType = itk::SubtractImageFilter<ImageType>;
         SubtractFilterType::Pointer subtractFilter = SubtractFilterType::New();
         subtractFilter->SetInput1(totalImage);
         subtractFilter->SetInput2(scatterImage);
         subtractFilter->Update();
-        ImageType::Pointer scatterCorrectedImage = subtractFilter->GetOutput(); // This "scatterCorrectedImage" is the estimated primary
+        ImageType::Pointer primaryImage = subtractFilter->GetOutput(); // This "primaryImage" is the purely primary
+        primaryImage->DisconnectPipeline();
 
-        //// Correcting Original Scatter Image by subtracting Smoothed Scatter Estimate
-        /*subtractFilter->SetInput1(scatterImage);
-        subtractFilter->SetInput2(smoothedScatterEstimate);
+        ////////////////////////////////////////////////////////////////////////////////////
+        ////////////////////////////////////////////////////////////////////////////////////
+
+        subtractFilter->SetInput1(scatterImage);
+        subtractFilter->SetInput2(scatterEst);
         subtractFilter->Update();
-        ImageType::Pointer scatterCorrectedScatterImage = subtractFilter->GetOutput();/**/
+        ImageType::Pointer scatterCorrectedScatter = subtractFilter->GetOutput();
+        scatterCorrectedScatter->DisconnectPipeline();
+
+        ////////////////////////////////////////////////////////////////////////////////////
+        ////////////////////////////////////////////////////////////////////////////////////
+        subtractFilter->SetInput1(totalImage);
+        subtractFilter->SetInput2(scatterEst);
+        subtractFilter->Update();
+        ImageType::Pointer primaryEst = subtractFilter->GetOutput(); // This "primaryEst" is the estimated primary
+        primaryEst->DisconnectPipeline();
+
+        ////////////////////////////////////////////////////////////////////////////////////
+        ////////////////////////////////////////////////////////////////////////////////////
 
         //// Correcting Total Image by Flood Image  ////
+        std::cout << "Flood Correcting Scatter Corrected Images ... " << std::endl;
         using DivideFilterType = itk::DivideImageFilter<ImageType, ImageType, ImageType>;
         DivideFilterType::Pointer divideFilter = DivideFilterType::New();
-        // divideFilter->SetInput1(totalImage); // when not doing scatter correction
-        divideFilter->SetInput1(scatterCorrectedImage); // when doing scatter correction
+        divideFilter->SetInput1(primaryImage);
         divideFilter->SetInput2(floodImage);
         divideFilter->Update();
-        // ImageType::Pointer floodCorrectedImage = divideFilter->GetOutput(); // when not doing scatter correction
-        ImageType::Pointer correctedImage = divideFilter->GetOutput(); // when doing scatter correction/**/
+        primaryImage = divideFilter->GetOutput();
+        primaryImage->DisconnectPipeline();
+
+        divideFilter->SetInput1(primaryEst);
+        divideFilter->Update();
+        primaryEst = divideFilter->GetOutput();
+        primaryEst->DisconnectPipeline();
 
         /////////// ReScale an image if needed ///////////
+        std::cout << "Rescaling Corrected Images ... " << std::endl;
         // typedef for the RescaleIntensityImageFilter
         using FilterType = itk::MultiplyImageFilter<ImageType, ImageType, ImageType>;
-
-        // Create and setup the filter
         auto multiplyConstantFilter = FilterType::New();
-        multiplyConstantFilter->SetInput(correctedImage);
-        multiplyConstantFilter->SetConstant(10);
+        multiplyConstantFilter->SetInput(primaryImage);
+        multiplyConstantFilter->SetConstant(5);
         multiplyConstantFilter->Update();
+        primaryImage = multiplyConstantFilter->GetOutput();
+        primaryImage->DisconnectPipeline();
 
-        ImageType::Pointer rescaledImage = multiplyConstantFilter->GetOutput();
-
+        multiplyConstantFilter->SetInput(primaryEst);
+        multiplyConstantFilter->Update();
+        primaryEst = multiplyConstantFilter->GetOutput();
+        primaryEst->DisconnectPipeline();
         //////////////////// IMAGE CORRECTION ///////////////////
         /////////////////////////////////////////////////////////
 
         /////////////////////////////////////////////////////////
         ///////////// CHANGE METADATA BEFORE WRITING ////////////
-
+        std::cout << "Setting size and origin ... " << std::endl;
         // Change size
         ImageType::SizeType size;
-        size[0] = 250;                    // New size in the x direction
-        size[1] = 250;                    // New size in the y direction
-        size[2] = 201;                    // New size in the z direction
-        correctedImage->SetRegions(size); // when doing scatter correction
-        // floodCorrectedImage->SetRegions(size);
+        size[0] = 250;                  // New size in the x direction
+        size[1] = 250;                  // New size in the y direction
+        size[2] = 401;                  // New size in the z direction
+        primaryImage->SetRegions(size); // when doing scatter correction
+        primaryEst->SetRegions(size);
 
         // Change spacing
         ImageType::SpacingType spacing;
-        spacing[0] = 1;                      // New spacing in the x direction
-        spacing[1] = 1;                      // New spacing in the y direction
-        spacing[2] = 1;                      // New spacing in the z direction
-        correctedImage->SetSpacing(spacing); // when doing scatter correction
-        // floodCorrectedImage->SetSpacing(spacing);
+        spacing[0] = 1;                    // New spacing in the x direction
+        spacing[1] = 1;                    // New spacing in the y direction
+        spacing[2] = 1;                    // New spacing in the z direction
+        primaryImage->SetSpacing(spacing); // when doing scatter correction
+        primaryEst->SetSpacing(spacing);
 
         // Change origin
         ImageType::PointType newOrigin;
         newOrigin[0] = -((size[0] / 2) - (spacing[0] / 2)); // new x origin
         newOrigin[1] = -((size[1] / 2) - (spacing[1] / 2)); // new y origin
         newOrigin[2] = 0;                                   // new z origin
-        correctedImage->SetOrigin(newOrigin);               // when doing scatter correction
-        // floodCorrectedImage->SetOrigin(newOrigin);
-        /**/
+        primaryImage->SetOrigin(newOrigin);                 // when doing scatter correction
+        primaryEst->SetOrigin(newOrigin);
         ///////////// CHANGE METADATA BEFORE WRITING ////////////
         /////////////////////////////////////////////////////////
 
         /////////////////////////////////////////////////////////
         //////////////////// WRITE FILES OUT ////////////////////
-        // Define the writer type
-        using WriterType = itk::ImageFileWriter<ImageType>;
-        WriterType::Pointer writer = WriterType::New();
 
-        /*writer->SetFileName("/home/tunok/Work/imgProcess_main/tests/scatterEst.mha");
-        writer->SetInput(scatterEst);
-        writer->Update();
-        std::cout << "Writing File Out: scatterEst.mha" << std::endl;
+        if (boosted)
+        {
+            writer->SetFileName("/home/tunok/Work/imgProcess_main/tests/primaryBoostedImage.mha");
+            writer->SetInput(primaryImage);
+            writer->Update();
+            std::cout << "Writing File Out: primaryBoostedImage.mha" << std::endl;
 
-        writer->SetFileName("/home/tunok/Work/imgProcess_main/tests/smoothedScatterEstimate.mha");
-        writer->SetInput(smoothedScatterEstimate);
-        writer->Update();
-        std::cout << "Writing File Out: smoothedScatterEstimate.mha" << std::endl;/**/
+            writer->SetFileName("/home/tunok/Work/imgProcess_main/tests/primaryEst.mha");
+            writer->SetInput(primaryEst);
+            writer->Update();
+            std::cout << "Writing File Out: primaryEst.mha" << std::endl;
+            writer->SetFileName("/home/tunok/Work/imgProcess_main/tests/scatterCorrectedScatter.mha");
+            writer->SetInput(scatterCorrectedScatter);
+            writer->Update();
+            std::cout << "Writing File Out: scatterCorrectedScatter.mha" << std::endl;
+        }
+        else
+        {
+            writer->SetFileName("/home/tunok/Work/imgProcess_main/tests/primaryUnboostedImage.mha");
+            writer->SetInput(primaryImage);
+            writer->Update();
+            std::cout << "Writing File Out: primaryUnboostedImage.mha" << std::endl;
+        }
 
-        writer->SetFileName("/home/tunok/Work/imgProcess_main/tests/primaryImage500000000.mha");
-        writer->SetInput(scatterCorrectedImage);
-        writer->Update();
-        std::cout << "Writing File Out: primaryImage500000000.mha" << std::endl;
-        /*
-                writer->SetFileName("/home/tunok/Work/imgProcess_main/tests/scatterCorrectedScatterImage5000000.mha");
-                writer->SetInput(scatterCorrectedScatterImage);
-                writer->Update();
-                std::cout << "Writing File Out: scatterCorrectedScatterImage.mha" << std::endl;/**/
-
-        writer->SetFileName("/home/tunok/Work/imgProcess_main/tests/rescaledImage500000000.mha");
-        writer->SetInput(correctedImage);
-        // writer->SetInput(floodCorrectedImage);
-        writer->Update();
-        std::cout << "Writing File Out: rescaledImage500000000.mha" << std::endl;
-        /**/
         //////////////////// WRITE FILES OUT ////////////////////
         /////////////////////////////////////////////////////////
 
@@ -612,6 +1053,7 @@ int main()
         ///////////////////// GEOMETRY XML //////////////////////
 
         // Set the parameters
+        std::cout << "Writing Geometry ... " << std::endl;
         using GeometryType = rtk::ThreeDCircularProjectionGeometry;
         GeometryType::Pointer geometry = GeometryType::New();
 
@@ -619,7 +1061,7 @@ int main()
         double sdd = 1500.0;                // source to detector distance
         double start_angle = 0.0;           // start angle
         double stop_angle = 360.0;          // stop angle
-        unsigned int num_projections = 200; // number of projections
+        unsigned int num_projections = 400; // number of projections
 
         double angle_step = (stop_angle - start_angle) / (num_projections);
         for (unsigned int i = 0; i <= num_projections; i++)
@@ -633,70 +1075,18 @@ int main()
         xmlWriter->SetFilename("/home/tunok/Work/imgProcess_main/tests/Geometry.xml");
         xmlWriter->SetObject(geometry);
         xmlWriter->WriteFile();
-
-        ////////////////////////////////////////////////////////
-        ///////////////////// RECONSTRUCT ////////////////////// // Cannot reconstuct anything as of yet.
-        // Set up the FDK reconstruction filter
-        // Create an image filled with zeroes that will hold the reconstructed volume
-        if (false)
-        { /*
-             using ConstantImageSourceType = rtk::ConstantImageSource<ImageType>;
-             ConstantImageSourceType::Pointer source = ConstantImageSourceType::New();
-             ImageType::SizeType reconSize;
-             reconSize[0] = 100; // adjust as needed
-             reconSize[1] = 100; // adjust as needed
-             reconSize[2] = 100; // adjust as needed
-             source->SetSize(reconSize);
-             source->SetSpacing(1.0);                // adjust as needed
-             source->SetOrigin(-reconSize[0] / 2.0); // adjust as needed
-             source->SetConstant(0.0);
-             source->Update();
-
-             // Set up FDK reconstruction filter
-             using FDKFilterType = rtk::FDKConeBeamReconstructionFilter<ImageType, ImageType>;
-             FDKFilterType::Pointer fdk = FDKFilterType::New();
-             fdk->SetInput(source->GetOutput());
-             fdk->SetInput(1, correctedImage);
-             fdk->SetGeometry(geometry);
-             fdk->Update();
-
-             // The resulting reconstructed image can be obtained by calling
-             ImageType::Pointer reconstructedVolume = fdk->GetOutput();
-
-             // Save the reconstructed volume
-             using WriterType = itk::ImageFileWriter<ImageType>;
-             WriterType::Pointer reconWriter = WriterType::New();
-             reconWriter->SetFileName("/home/tunok/Work/imgProcess_main/tests/reconImage.mha");
-             reconWriter->SetInput(reconstructedVolume);
-             try
-             {
-                 reconWriter->Update();
-             }
-             catch (itk::ExceptionObject &e)
-             {
-                 std::cerr << "Error: " << e << std::endl;
-                 return EXIT_FAILURE;
-             }
-             std::cout << "Writing File Out: reconImage.mha" << std::endl;/**/
-        }
-        ///////////////////// RECONSTRUCT //////////////////////
-        ////////////////////////////////////////////////////////
+        std::cout << "Written File Out: Geometry.xml" << std::endl;
     }
 
-    /**/
-
-    if (false)
+    if (true)
     {
 
         /////////////////////////////////////////////////////////
         //////////////////// WRITE VALUES OUT ///////////////////
-        // TOTAL IMAGE
-        ImageType::Pointer totalBoostedImage = ReadMHA("/home/tunok/Work/imgProcess_main/tests/correctedUnboostedImage500000000.mha");
-        ImageType::Pointer totalUnboostedImage = ReadMHA("/home/tunok/Work/imgProcess_main/tests/correctedUnboostedImage500000000.mha");
-        // Read Image file: Boosted Corrected Reconstructed Volume
-        // ImageType::Pointer boostedReconVolume = ReadMHA("/home/tunok/Work/Fresco-21.1.0-CustomLinuxBuild/Examples/simulate_and_reconstruct/boostedCorrectedVolume.mha");
-        // Read Image file: Unboosted Corrected Reconstructed Volume
-        // ImageType::Pointer unboostedReconVolume = ReadMHA("/home/tunok/Work/Fresco-21.1.0-CustomLinuxBuild/Examples/simulate_and_reconstruct/unboostedCorrectedVolume.mha");/**/
+        // Read Image file: Good Corrected Reconstructed Volume
+        ImageType::Pointer goodVolume = ReadMHA("/home/tunok/Work/Fresco-21.1.0-CustomLinuxBuild/Examples/simulate_and_reconstruct/primaryBoostedVolume.mha");
+        // Read Image file: Bad Corrected Reconstructed Volume
+        ImageType::Pointer badVolume = ReadMHA("/home/tunok/Work/Fresco-21.1.0-CustomLinuxBuild/Examples/simulate_and_reconstruct/primaryUnboostedVolume.mha");
 
         // Caculating Mean
         /*double meanOriginal = CalculateMean(scatterImage);
@@ -711,13 +1101,13 @@ int main()
         std::cout << "Scatter Stds of Original, Estimate and Corrected Images are: " << stdOriginal << ", " << stdEstimate << ", " << stdCorrected << "." << std::endl;/**/
 
         /*
-        ImageType::SizeType size = boostedReconVolume->GetLargestPossibleRegion().GetSize();
+        ImageType::SizeType size = goodReconVolume->GetLargestPossibleRegion().GetSize();
         std::cout << "Image dimensions: "
                   << size[0] << " x "
                   << size[1] << " x "
                   << size[2] << std::endl;
 
-        size = unboostedReconVolume->GetLargestPossibleRegion().GetSize();
+        size = badReconVolume->GetLargestPossibleRegion().GetSize();
         std::cout << "Image dimensions: "
                   << size[0] << " x "
                   << size[1] << " x "
@@ -745,59 +1135,130 @@ int main()
         noiseRegion.SetSize(size3D);
         noiseRegion.SetIndex(start3D);
 
-        double snr = calculateSNR(boostedReconVolume, noiseRegion, sliceNumber);
-        std::cout << "The SNR for boosted Image is: " << snr << std::endl;
-        snr = calculateSNR(unboostedReconVolume, noiseRegion, sliceNumber);
-        std::cout << "The SNR for unboosted Image is: " << snr << std::endl;
+        double snr = calculateSNR(goodReconVolume, noiseRegion, sliceNumber);
+        std::cout << "The SNR for good Image is: " << snr << std::endl;
+        snr = calculateSNR(badReconVolume, noiseRegion, sliceNumber);
+        std::cout << "The SNR for bad Image is: " << snr << std::endl;
         /**/
         ///////////// Calculating SNR //////////////
 
-        ///////////// Calculating CNR //////////////
+        ////////////////////////////////////////////////////////////////////////////////////////////////
+        /////////////////////////////////////// Calculating CNR ////////////////////////////////////////
 
-        // work with 10x10 regions
-        ImageType::SizeType size;
-        size[0] = 10; // size in x direction
-        size[1] = 10; // size in y direction
-        size[2] = 1;  // size in z direction
+        /////////////////////////////////////// good Region ///////////////////////////////////////
+        double cnrGood;
+        double cnrBad;
+        if (true)
+        {
+            ImageType::SizeType size = {20, 1, 20};
 
-        // signalRegion1 around (50, 73, 36), singalRegion2 around (95, 20, 36), noiseRegion around (20, 20, 36)
-        ImageType::IndexType startRegion1;
-        startRegion1[0] = 90;  // starting x coordinate
-        startRegion1[1] = 110; // starting y coordinate
-        startRegion1[2] = 0;   // starting z coordinate
+            // Create the position vector of the midpoint of the regions
+            std::vector<float> midPointRegion1 = {180, 210, 130};
+            std::vector<float> midPointRegion2 = {180, 210, 195};     // 190 - signal region inside the good region
+            std::vector<float> midPointRegionNoise = {180, 210, 195}; //{180, 212, 195}; // midPointRegion2
+            std::cout << "x: " << midPointRegion1[0] << ", y: " << midPointRegion1[1] << ", z: " << midPointRegion1[2] << std::endl;
 
-        ImageType::IndexType startRegion2;
-        startRegion2[0] = 90; // starting x coordinate
-        startRegion2[1] = 80; // starting y coordinate
-        startRegion2[2] = 0;  // starting z coordinate
+            // signalRegion1 around (50, 73, 36), singalRegion2 around (95, 20, 36), noiseRegion around (20, 20, 36)
+            ImageType::IndexType startRegion1;
+            startRegion1[0] = midPointRegion1[0] - (size[0] / 2); // starting x coordinate
+            startRegion1[1] = midPointRegion1[1];                 // starting y coordinate
+            startRegion1[2] = midPointRegion1[2] - (size[2] / 2); // starting z coordinate
+            std::cout << "startRegion1 x: " << startRegion1[0] << ", y: " << startRegion1[1] << ", z: " << startRegion1[2] << std::endl;
 
-        ImageType::IndexType startRegionNoise;
-        startRegionNoise[0] = 15; // starting x coordinate
-        startRegionNoise[1] = 50; // starting y coordinate
-        startRegionNoise[2] = 0;  // starting z coordinate
+            ImageType::IndexType startRegion2;
+            startRegion2[0] = midPointRegion2[0] - (size[0] / 2); // starting x coordinate
+            startRegion2[1] = midPointRegion2[1];                 // starting y coordinate
+            startRegion2[2] = midPointRegion2[2] - (size[2] / 2); // starting z coordinate
+            std::cout << "startRegion2 x: " << startRegion2[0] << ", y: " << startRegion2[1] << ", z: " << startRegion2[2] << std::endl;
 
-        ImageType::RegionType region1;
-        region1.SetIndex(startRegion1);
-        region1.SetSize(size);
+            ImageType::IndexType startRegionNoise;
+            startRegionNoise[0] = midPointRegionNoise[0] - (size[0] / 2); // starting x coordinate
+            startRegionNoise[1] = midPointRegionNoise[1];                 // starting y coordinate
+            startRegionNoise[2] = midPointRegionNoise[2] - (size[2] / 2); // starting z coordinate
+            std::cout << "startRegionNoise x: " << startRegionNoise[0] << ", y: " << startRegionNoise[1] << ", z: " << startRegionNoise[2] << std::endl;
 
-        ImageType::RegionType region2;
-        region2.SetIndex(startRegion2);
-        region2.SetSize(size);
+            ImageType::RegionType region1;
+            region1.SetIndex(startRegion1);
+            region1.SetSize(size);
 
-        ImageType::RegionType regionNoise;
-        regionNoise.SetIndex(startRegionNoise);
-        regionNoise.SetSize(size);
+            ImageType::RegionType region2;
+            region2.SetIndex(startRegion2);
+            region2.SetSize(size);
 
-        double cnr = calculateCNR(totalUnboostedImage, region1, region2, regionNoise);
-        std::cout << "The CNR of the Unboosted Image is: " << cnr << std::endl;
+            ImageType::RegionType regionNoise;
+            regionNoise.SetIndex(startRegionNoise);
+            regionNoise.SetSize(size);
 
-        cnr = calculateCNR(totalBoostedImage, region1, region2, regionNoise);
-        std::cout << "The CNR of the Boosted Image is: " << cnr << std::endl;
+            cnrGood = calculateCNR(goodVolume, region1, region2, regionNoise);
+            std::cout << "The CNR of the Good Image is: " << cnrGood << std::endl;
+        }
+        /////////////////////////////////////// Good Region ///////////////////////////////////////
+
+        /////////////////////////////////////// Bad Region ///////////////////////////////////////
+        // Assuming the size, shape and range of the regions in both good and bad volumes will be the same.
+        if (true)
+        {
+
+            ImageType::SizeType size = {20, 1, 20};
+
+            // Create the position vector of the midpoint of the regions
+            std::vector<float> midPointRegion1 = {180, 210, 130};
+            std::vector<float> midPointRegion2 = {180, 210, 250};     // 190 - signal region inside the boosted region
+            std::vector<float> midPointRegionNoise = {180, 210, 250}; //{180, 212, 195}; // midPointRegion2
+            std::cout << "x: " << midPointRegion1[0] << ", y: " << midPointRegion1[1] << ", z: " << midPointRegion1[2] << std::endl;
+
+            // signalRegion1 around (50, 73, 36), singalRegion2 around (95, 20, 36), noiseRegion around (20, 20, 36)
+            ImageType::IndexType startRegion1;
+            startRegion1[0] = midPointRegion1[0] - (size[0] / 2); // starting x coordinate
+            startRegion1[1] = midPointRegion1[1];                 // starting y coordinate
+            startRegion1[2] = midPointRegion1[2] - (size[2] / 2); // starting z coordinate
+            std::cout << "startRegion1 x: " << startRegion1[0] << ", y: " << startRegion1[1] << ", z: " << startRegion1[2] << std::endl;
+
+            ImageType::IndexType startRegion2;
+            startRegion2[0] = midPointRegion2[0] - (size[0] / 2); // starting x coordinate
+            startRegion2[1] = midPointRegion2[1];                 // starting y coordinate
+            startRegion2[2] = midPointRegion2[2] - (size[2] / 2); // starting z coordinate
+            std::cout << "startRegion2 x: " << startRegion2[0] << ", y: " << startRegion2[1] << ", z: " << startRegion2[2] << std::endl;
+
+            ImageType::IndexType startRegionNoise;
+            startRegionNoise[0] = midPointRegionNoise[0] - (size[0] / 2); // starting x coordinate
+            startRegionNoise[1] = midPointRegionNoise[1];                 // starting y coordinate
+            startRegionNoise[2] = midPointRegionNoise[2] - (size[2] / 2); // starting z coordinate
+            std::cout << "startRegionNoise x: " << startRegionNoise[0] << ", y: " << startRegionNoise[1] << ", z: " << startRegionNoise[2] << std::endl;
+
+            ImageType::RegionType region1;
+            region1.SetIndex(startRegion1);
+            region1.SetSize(size);
+
+            ImageType::RegionType region2;
+            region2.SetIndex(startRegion2);
+            region2.SetSize(size);
+
+            ImageType::RegionType regionNoise;
+            regionNoise.SetIndex(startRegionNoise);
+            regionNoise.SetSize(size);
+
+            cnrBad = calculateCNR(badVolume, region1, region2, regionNoise);
+            std::cout << "The CNR of the Bad Image is: " << cnrBad << std::endl;
+        }
+        if (cnrBad != 0.0)
+        { // Avoid division by zero
+            double improvementPercentage = (cnrGood - cnrBad) / cnrBad * 100.0;
+            std::cout << "Improvement in CNR is " << improvementPercentage << "%" << std::endl;
+            ;
+        }
+        else
+        {
+            std::cout << "Cannot calculate improvement as the original CNR is zero." << std::endl;
+            ;
+        }
+
+        /////////////////////////////////////// Calculating CNR ////////////////////////////////////////
+        ////////////////////////////////////////////////////////////////////////////////////////////////
+
+        //////////////////// WRITE VALUES OUT ///////////////////
+        /////////////////////////////////////////////////////////
     }
-    ///////////// Calculating CNR //////////////
-    //////////////////// WRITE VALUES OUT ///////////////////
-    /////////////////////////////////////////////////////////
-
     std::cout
         << "Press ENTER to continue... " << std::flush;
     std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
@@ -805,4 +1266,4 @@ int main()
     return 0;
 }
 
-// running this program should output the string: "Image dimensions: 192 x 192 x 121" (as of june 6th, 2023)
+// running this program should output the string: "Image dimensions: 250 x 250 x 401" (as of August 9th, 2023)

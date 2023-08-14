@@ -1,14 +1,22 @@
 cmake_minimum_required(VERSION 3.10)
 project(imgProcess)
 
-# BEFORE COMPILING AND BUILDING ITK, WE NED THE RTK LIBRARY COMPILED AND BUILT WITHIN ITK.
-# FOR THAT, GIT CLONE RTK FROM "https://github.com/SimonRit/RTK.git" IN "/.../ITK/MODULES/REMOTE" DIRECTORY.
-# THEN CMAKE ITK LIKE SO: "CMAKE .. -DModule_RTK=ON -DITK_USE_GPU=OFF -DRTK_USE_CUDA:BOOL=OFF 
-#                          -DCMAKE_INSTALL_PREFIX:PATH=/.../ITK/install"
-# THEN DO MAKE AND MAKE INSTALL
+# Find Eigen
+find_package(Eigen3 3.3 REQUIRED NO_MODULE)
+include_directories(${EIGEN3_INCLUDE_DIR})
+#message("Found Eigen3 in: ${EIGEN3_INCLUDE_DIR}")
+
 find_package(ITK REQUIRED)
 include(${ITK_USE_FILE})
 
+# YAML
+set(YAMLCPP_BINARY_DIR /home/tunok/Work/yaml-cpp/build)
+#set(YAML_CONFIG_FILE "${CMAKE_CURRENT_SOURCE_DIR}/exe/Config.yaml")
+add_subdirectory(/home/tunok/Work/yaml-cpp ${YAMLCPP_BINARY_DIR})
+include_directories(
+   /home/tunok/Work/yaml-cpp/include
+)
+
 add_executable(imgProcess imgProcess.cpp)
 
-target_link_libraries(imgProcess ${ITK_LIBRARIES})
+target_link_libraries(imgProcess ${ITK_LIBRARIES} Eigen3::Eigen yaml-cpp)
