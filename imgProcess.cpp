@@ -29,7 +29,7 @@ typedef itk::Image<float, 2> ImageType2D;
 using Image1DType = itk::Image<float, 1>;
 typedef itk::ImageFileWriter<ImageType> WriterType;
 
-void ReadImageProperties(std::string filename)
+/*void ReadImageProperties(std::string filename)
 {
     typedef itk::ImageFileReader<ImageType> ReaderType;
     ReaderType::Pointer reader = ReaderType::New();
@@ -43,7 +43,7 @@ void ReadImageProperties(std::string filename)
 
     std::cout << "Size: " << size[0] << ", " << size[1] << ", " << size[2] << std::endl;
     std::cout << "Spacing: " << spacing[0] << ", " << spacing[1] << ", " << spacing[2] << std::endl;
-}
+}/**/
 
 int GetImageDimension(const std::string &filename)
 {
@@ -65,7 +65,7 @@ int GetImageDimension(const std::string &filename)
     return imageIO->GetNumberOfDimensions();
 }
 
-float *ReadMHA(const std::string &filename, unsigned int &width, unsigned int &height, unsigned int &numProjections)
+/*float *ReadMHA(const std::string &filename, unsigned int &width, unsigned int &height, unsigned int &numProjections)
 {
     int imageDim = GetImageDimension(filename);
     std::cout << "Reading MHA Image File... " << std::endl;
@@ -98,7 +98,7 @@ float *ReadMHA(const std::string &filename, unsigned int &width, unsigned int &h
     }
 
     return arrayData;
-}
+}/**/
 
 ImageType::Pointer ReadMHA(const std::string &filename)
 {
@@ -112,7 +112,7 @@ ImageType::Pointer ReadMHA(const std::string &filename)
     // The reader will automatically allocate the necessary memory
     reader->Update();
 
-    // Get the image from the reader
+    // Get image from the reader
     ImageType::Pointer image = reader->GetOutput();
 
     // Return the image
@@ -217,7 +217,7 @@ void LateralSmoothing(ImageType::Pointer &scatterEstimate, double variance)
 // Function to extract a row or column from a 2D ITK Image
 // 'direction' is 0 for row, 1 for column.
 // 'index' is the index of the row or column to extract.
-std::vector<float> extractLine(itk::Image<float, 2>::Pointer image, unsigned direction, unsigned index)
+/*std::vector<float> extractLine(itk::Image<float, 2>::Pointer image, unsigned direction, unsigned index)
 {
     std::vector<float> lineValues;
 
@@ -252,9 +252,9 @@ std::vector<float> extractLine(itk::Image<float, 2>::Pointer image, unsigned dir
     }
 
     return lineValues;
-}
+}/**/
 
-double interpolateAtPoint(const std::vector<float> &columnData, float y)
+/*double interpolateAtPoint(const std::vector<float> &columnData, float y)
 {
     // Define the image type using float pixels and 2 dimensions
     using ImageType = itk::Image<float, 1>;
@@ -294,9 +294,9 @@ double interpolateAtPoint(const std::vector<float> &columnData, float y)
     {
         throw std::invalid_argument("Point is outside the image!");
     }
-}
+}/**/
 
-void InterpolateColumns(itk::Image<float, 3>::Pointer scatterImage3D, itk::ImageRegion<3> exclusionRegion)
+/*void InterpolateColumns(itk::Image<float, 3>::Pointer scatterImage3D, itk::ImageRegion<3> exclusionRegion)
 {
     // Get the size of the 3D image
     itk::Size<3> size3D = scatterImage3D->GetLargestPossibleRegion().GetSize();
@@ -346,7 +346,7 @@ void InterpolateColumns(itk::Image<float, 3>::Pointer scatterImage3D, itk::Image
             }
         }
     }
-}
+}/**/
 
 // Causal recursive filter
 void CausalRecursiveFilter(ImageType::Pointer inputImage, float theta)
@@ -488,6 +488,33 @@ double calculateCNR(ImageType::Pointer image,
     noiseStdDev = std::sqrt(noiseStdDev / (noiseCount - 1));
 
     return std::abs(signalMean1 - signalMean2) / noiseStdDev; // Return CNR
+}
+
+double calculateNoise(ImageType::Pointer image, ImageType::RegionType noiseRegion)
+{
+    itk::ImageRegionIterator<ImageType> noiseIterator(image, noiseRegion);
+
+    double noiseMean = 0.0;
+    double noiseStdDev = 0.0;
+    unsigned int noiseCount = 0;
+
+    // Calculate mean of noise region
+    for (noiseIterator.GoToBegin(); !noiseIterator.IsAtEnd(); ++noiseIterator)
+    {
+        noiseMean += noiseIterator.Get();
+        ++noiseCount;
+    }
+    noiseMean /= noiseCount;
+
+    // Calculate standard deviation of noise region
+    for (noiseIterator.GoToBegin(); !noiseIterator.IsAtEnd(); ++noiseIterator)
+    {
+        double val = noiseIterator.Get() - noiseMean;
+        noiseStdDev += val * val;
+    }
+    noiseStdDev = std::sqrt(noiseStdDev / (noiseCount - 1));
+
+    return noiseStdDev; // Return standard deviation as a measure of noise
 }
 
 double CalculateMean(itk::Image<float, 3>::Pointer image)
@@ -752,7 +779,7 @@ int main(int argc, char *argv[])
 
     /////////////////////////////////////////////////////////
     ///////////////////// READ CT Params ////////////////////
-    std::string pathToConfig = "/home/tunok/Work/mcDataIO_main/tests/output/simulParams.txt";
+    std::string pathToConfig = "/home/tunok/Work/mcDataIO_main/tests/output/simInfo.txt";
     YAML::Node configFile = YAML::LoadFile(pathToConfig);
     int nPhotons = configFile["nPhotons"].as<int>();
     float SAD = configFile["SAD"].as<float>();
@@ -762,127 +789,126 @@ int main(int argc, char *argv[])
     float PixelPitch = configFile["PixelPitch"].as<float>();
     int nProjections = configFile["nProjections"].as<int>();
 
-
     std::cout << "nPhotons: " << nPhotons << std::endl;
     std::cout << "SAD: " << SAD << std::endl;
     std::cout << "SDD: " << SDD << std::endl;
     std::cout << "SCD: " << SCD << std::endl;
     std::cout << "SPD: " << SPD << std::endl;
     std::cout << "PixelPitch: " << PixelPitch << std::endl;
-    std::cout << "nProjections: " << nProjections << std::endl;
+    std::cout << "nProjections: " << nProjections << std::endl; /**/
     ///////////////////// READ CT Params ////////////////////
     /////////////////////////////////////////////////////////
 
     /////////////////////////////////////////////////////////
     //////////////////// READ IMAGE FILES ///////////////////
+
+    ImageType::Pointer totalImage;
+    ImageType::Pointer scatterImage;
+    ImageType::Pointer floodImage;
+
+    ////////////////////////////////////////////////////////
+    ///////////////////// CONCATENATE //////////////////////
+    ImageType::SizeType concatSize;
+    concatSize[0] = 375; // size in x-direction
+    concatSize[1] = 375; // size in y-direction
+    concatSize[2] = 401; // size in z-direction
+
+    std::cout << "Concatenating Images ... " << std::endl;
+
+    if (boosted)
+    {
+        std::vector<std::string> totalBoostedImageFilenames;
+        totalBoostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/totalBoostedImage100000000Projection5.mha");
+        totalBoostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/totalBoostedImage100000000Projection6.mha");
+        totalBoostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/totalBoostedImage100000000Projection7.mha");
+        totalBoostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/totalBoostedImage100000000Projection8.mha");
+
+        std::vector<std::string> scatterBoostedImageFilenames;
+        scatterBoostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/scatterBoostedImage100000000Projection5.mha");
+        scatterBoostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/scatterBoostedImage100000000Projection6.mha");
+        scatterBoostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/scatterBoostedImage100000000Projection7.mha");
+        scatterBoostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/scatterBoostedImage100000000Projection8.mha");
+
+        std::vector<std::string> floodBoostedImageFilenames;
+        floodBoostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/Set300000000Projection5,6,7,8/floodBoostedImage300000000Projection5.mha");
+        floodBoostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/Set300000000Projection5,6,7,8/floodBoostedImage300000000Projection6.mha");
+        floodBoostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/Set300000000Projection5,6,7,8/floodBoostedImage300000000Projection7.mha");
+        floodBoostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/Set300000000Projection5,6,7,8/floodBoostedImage300000000Projection8.mha");
+
+        totalImage = ConcatenateMultipleImages(totalBoostedImageFilenames);
+        scatterImage = ConcatenateMultipleImages(scatterBoostedImageFilenames);
+        floodImage = ConcatenateMultipleImages(floodBoostedImageFilenames);
+    }
+    else
+    {
+        std::vector<std::string> totalUnboostedImageFilenames;
+        totalUnboostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/totalUnboostedImage100000000Projection5.mha");
+        totalUnboostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/totalUnboostedImage100000000Projection6.mha");
+        // totalUnboostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/Set100000000Projection5,6,7,8/totalUnboostedImage100000000Projection7.mha");
+        // totalUnboostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/Set100000000Projection5,6,7,8/totalUnboostedImage100000000Projection8.mha");
+
+        std::vector<std::string> scatterUnboostedImageFilenames;
+        scatterUnboostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/scatterUnboostedImage100000000Projection5.mha");
+        scatterUnboostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/scatterUnboostedImage100000000Projection6.mha");
+        // scatterUnboostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/Set100000000Projection5,6,7,8/scatterUnboostedImage100000000Projection7.mha");
+        // scatterUnboostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/Set100000000Projection5,6,7,8/scatterUnboostedImage100000000Projection8.mha");
+
+        std::vector<std::string> floodUnboostedImageFilenames;
+        floodUnboostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/Set300000000Projection5,6/floodUnboostedImage300000000Projection5.mha");
+        floodUnboostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/Set300000000Projection5,6/floodUnboostedImage300000000Projection6.mha");
+        // floodUnboostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/Set100000000Projection5,6,7,8/floodUnboostedImage100000000Projection7.mha");
+        // floodUnboostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/Set100000000Projection5,6,7,8/floodUnboostedImage100000000Projection8.mha");
+
+        totalImage = ConcatenateMultipleImages(totalUnboostedImageFilenames);
+        scatterImage = ConcatenateMultipleImages(scatterUnboostedImageFilenames);
+        floodImage = ConcatenateMultipleImages(floodUnboostedImageFilenames);
+    }
+
+    // Define the writer type
+    using WriterType = itk::ImageFileWriter<ImageType>;
+    WriterType::Pointer writer = WriterType::New();
+
+    if (boosted)
+    {
+        writer->SetFileName("/home/tunok/Work/imgProcess_main/tests/totalBoosted.mha");
+        writer->SetInput(totalImage);
+        writer->Update();
+        std::cout << "Writing File Out: totalBoosted.mha" << std::endl;
+
+        writer->SetFileName("/home/tunok/Work/imgProcess_main/tests/scatterBoosted.mha");
+        writer->SetInput(scatterImage);
+        writer->Update();
+        std::cout << "Writing File Out: scatterBoosted.mha" << std::endl;
+
+        writer->SetFileName("/home/tunok/Work/imgProcess_main/tests/floodBoosted.mha");
+        writer->SetInput(floodImage);
+        writer->Update();
+        std::cout << "Writing File Out: floodBoosted.mha" << std::endl;
+    }
+    else
+    {
+        writer->SetFileName("/home/tunok/Work/imgProcess_main/tests/totalUnboosted.mha");
+        writer->SetInput(totalImage);
+        writer->Update();
+        std::cout << "Writing File Out: totalUnboosted.mha" << std::endl;
+
+        writer->SetFileName("/home/tunok/Work/imgProcess_main/tests/scatterUnboosted.mha");
+        writer->SetInput(scatterImage);
+        writer->Update();
+        std::cout << "Writing File Out: scatterUnboosted.mha" << std::endl;
+
+        writer->SetFileName("/home/tunok/Work/imgProcess_main/tests/floodUnboosted.mha");
+        writer->SetInput(floodImage);
+        writer->Update();
+        std::cout << "Writing File Out: floodUnboosted.mha" << std::endl;
+    }
+    ///////////////////// CONCATENATE //////////////////////
+    ////////////////////////////////////////////////////////
+
+    //////////////////// READ IMAGE FILES ///////////////////
+    /////////////////////////////////////////////////////////
     if (false) // this is to execute the image process section or to calculate CNR values
     {
-        ImageType::Pointer totalImage;
-        ImageType::Pointer scatterImage;
-        ImageType::Pointer floodImage;
-
-        ////////////////////////////////////////////////////////
-        ///////////////////// CONCATENATE //////////////////////
-        ImageType::SizeType concatSize;
-        concatSize[0] = 250; // size in x-direction
-        concatSize[1] = 250; // size in y-direction
-        concatSize[2] = 401; // size in z-direction
-
-        std::cout << "Concatenating Images ... " << std::endl;
-
-        if (boosted)
-        {
-            std::vector<std::string> totalBoostedImageFilenames;
-            totalBoostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/Set300000000Projection5,6/totalBoostedImage300000000Projection5.mha");
-            totalBoostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/Set300000000Projection5,6/totalBoostedImage300000000Projection6.mha");
-            // totalBoostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/Set300000000Projection5,6,7,8/totalBoostedImage300000000Projection7.mha");
-            // totalBoostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/Set300000000Projection5,6,7,8/totalBoostedImage300000000Projection8.mha");
-
-            std::vector<std::string> scatterBoostedImageFilenames;
-            scatterBoostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/Set300000000Projection5,6/scatterBoostedImage300000000Projection5.mha");
-            scatterBoostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/Set300000000Projection5,6/scatterBoostedImage300000000Projection6.mha");
-            // scatterBoostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/Set300000000Projection5,6,7,8/scatterBoostedImage300000000Projection7.mha");
-            // scatterBoostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/Set300000000Projection5,6,7,8/scatterBoostedImage300000000Projection8.mha");
-
-            std::vector<std::string> floodBoostedImageFilenames;
-            floodBoostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/Set300000000Projection5,6/floodBoostedImage300000000Projection5.mha");
-            floodBoostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/Set300000000Projection5,6/floodBoostedImage300000000Projection6.mha");
-            // floodBoostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/Set300000000Projection5,6,7,8/floodBoostedImage300000000Projection7.mha");
-            // floodBoostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/Set300000000Projection5,6,7,8/floodBoostedImage300000000Projection8.mha");
-
-            totalImage = ConcatenateMultipleImages(totalBoostedImageFilenames);
-            scatterImage = ConcatenateMultipleImages(scatterBoostedImageFilenames);
-            floodImage = ConcatenateMultipleImages(floodBoostedImageFilenames);
-        }
-        else
-        {
-            std::vector<std::string> totalUnboostedImageFilenames;
-            totalUnboostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/Set300000000Projection5,6/totalUnboostedImage300000000Projection5.mha");
-            totalUnboostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/Set300000000Projection5,6/totalUnboostedImage300000000Projection6.mha");
-            // totalUnboostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/Set300000000Projection5,6,7,8/totalUnboostedImage300000000Projection7.mha");
-            // totalUnboostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/Set300000000Projection5,6,7,8/totalUnboostedImage300000000Projection8.mha");
-
-            std::vector<std::string> scatterUnboostedImageFilenames;
-            scatterUnboostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/Set300000000Projection5,6/scatterUnboostedImage300000000Projection5.mha");
-            scatterUnboostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/Set300000000Projection5,6/scatterUnboostedImage300000000Projection6.mha");
-            // scatterUnboostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/Set300000000Projection5,6,7,8/scatterUnboostedImage300000000Projection7.mha");
-            // scatterUnboostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/Set300000000Projection5,6,7,8/scatterUnboostedImage300000000Projection8.mha");
-
-            std::vector<std::string> floodUnboostedImageFilenames;
-            floodUnboostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/Set300000000Projection5,6/floodUnboostedImage300000000Projection5.mha");
-            floodUnboostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/Set300000000Projection5,6/floodUnboostedImage300000000Projection6.mha");
-            // floodUnboostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/Set300000000Projection5,6,7,8/floodUnboostedImage300000000Projection7.mha");
-            // floodUnboostedImageFilenames.push_back("/home/tunok/Work/mcDataIO_main/tests/output/Set300000000Projection5,6,7,8/floodUnboostedImage300000000Projection8.mha");
-
-            totalImage = ConcatenateMultipleImages(totalUnboostedImageFilenames);
-            scatterImage = ConcatenateMultipleImages(scatterUnboostedImageFilenames);
-            floodImage = ConcatenateMultipleImages(floodUnboostedImageFilenames);
-        }
-
-        // Define the writer type
-        using WriterType = itk::ImageFileWriter<ImageType>;
-        WriterType::Pointer writer = WriterType::New();
-
-        if (boosted)
-        {
-            writer->SetFileName("/home/tunok/Work/imgProcess_main/tests/totalBoosted.mha");
-            writer->SetInput(totalImage);
-            writer->Update();
-            std::cout << "Writing File Out: totalBoosted.mha" << std::endl;
-
-            writer->SetFileName("/home/tunok/Work/imgProcess_main/tests/scatterBoosted.mha");
-            writer->SetInput(scatterImage);
-            writer->Update();
-            std::cout << "Writing File Out: scatterBoosted.mha" << std::endl;
-
-            writer->SetFileName("/home/tunok/Work/imgProcess_main/tests/floodBoosted.mha");
-            writer->SetInput(floodImage);
-            writer->Update();
-            std::cout << "Writing File Out: floodBoosted.mha" << std::endl;
-        }
-        else
-        {
-            writer->SetFileName("/home/tunok/Work/imgProcess_main/tests/totalUnboosted.mha");
-            writer->SetInput(totalImage);
-            writer->Update();
-            std::cout << "Writing File Out: totalUnboosted.mha" << std::endl;
-
-            writer->SetFileName("/home/tunok/Work/imgProcess_main/tests/scatterUnboosted.mha");
-            writer->SetInput(scatterImage);
-            writer->Update();
-            std::cout << "Writing File Out: scatterUnboosted.mha" << std::endl;
-
-            writer->SetFileName("/home/tunok/Work/imgProcess_main/tests/floodUnboosted.mha");
-            writer->SetInput(floodImage);
-            writer->Update();
-            std::cout << "Writing File Out: floodUnboosted.mha" << std::endl;
-        }
-        ///////////////////// CONCATENATE //////////////////////
-        ////////////////////////////////////////////////////////
-
-        //////////////////// READ IMAGE FILES ///////////////////
-        /////////////////////////////////////////////////////////
-
         /////////////////////////////////////////////////////////
         //////////////////// SCATTER ESTIMATE ///////////////////
         // Define the ROI region (that is a misrepresentation region of the scatter signal i.e. we want to exclude this region
@@ -1078,7 +1104,7 @@ int main(int argc, char *argv[])
         std::cout << "Written File Out: Geometry.xml" << std::endl;
     }
 
-    if (true)
+    if (false)
     {
 
         /////////////////////////////////////////////////////////
@@ -1254,6 +1280,35 @@ int main(int argc, char *argv[])
         }
 
         /////////////////////////////////////// Calculating CNR ////////////////////////////////////////
+        ////////////////////////////////////////////////////////////////////////////////////////////////
+
+        ////////////////////////////////////////////////////////////////////////////////////////////////
+        ////////////////////////////////////// Calculating NOISE ///////////////////////////////////////
+
+        // Define the region you want to assess the noise
+        ImageType::RegionType noiseRegion;
+        ImageType::SizeType size = {20, 1, 20};
+
+        // Create the position vector of the midpoint of the regions
+        std::vector<float> midPoint = {180, 210, 130};
+        std::cout << "x: " << midPoint[0] << ", y: " << midPoint[1] << ", z: " << midPoint[2] << std::endl;
+
+        // signalRegion1 around (50, 73, 36), singalRegion2 around (95, 20, 36), noiseRegion around (20, 20, 36)
+        ImageType::IndexType startRegionNoise;
+        startRegionNoise[0] = midPoint[0] - (size[0] / 2); // starting x coordinate
+        startRegionNoise[1] = midPoint[1];                 // starting y coordinate
+        startRegionNoise[2] = midPoint[2] - (size[2] / 2); // starting z coordinate
+        std::cout << "startRegionNoise x: " << startRegionNoise[0] << ", y: " << startRegionNoise[1] << ", z: " << startRegionNoise[2] << std::endl;
+
+        noiseRegion.SetSize(size);
+        noiseRegion.SetIndex(startRegionNoise);
+
+        // Assuming 'image' is already defined as an ITK image pointer
+        double noise = calculateNoise(goodVolume, noiseRegion);
+
+        std::cout << "Noise in the specified region is: " << noise << std::endl;
+
+        ////////////////////////////////////// Calculating NOISE ///////////////////////////////////////
         ////////////////////////////////////////////////////////////////////////////////////////////////
 
         //////////////////// WRITE VALUES OUT ///////////////////
