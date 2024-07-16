@@ -17,6 +17,6 @@ include_directories(
    /home/tunok/Work/yaml-cpp/include
 )
 
-add_executable(imgProcess imgProcess.cpp)
+add_executable(imgProcess imgProcessTest.cpp)
 
 target_link_libraries(imgProcess ${ITK_LIBRARIES} Eigen3::Eigen yaml-cpp)
