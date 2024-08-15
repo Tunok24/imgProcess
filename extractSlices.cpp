@@ -1335,8 +1335,8 @@ int main(int argc, char *argv[])
     /////////////////////////////////////////////////////////
     //////////////////// READ IMAGE FILES ///////////////////
     // SCATTER IMAGE
-    std::string inputDir = "/home/tunok/Work/mcDataIO_main/tests/output/IsoHaroldProstDose/";
-    std::string outputDir = "/home/tunok/Work/imgProcess_main/tests/IsoHaroldProstTest/";
+    std::string inputDir = "/home/tunok/Work/mcDataIO_main/tests/output/CylinderEllipsoid/";
+    std::string outputDir = "/home/tunok/Work/imgProcess_main/tests/CylinderEllipsoidTest/";
 
     std::string pathToConfig = inputDir + "simInfo.txt";
     YAML::Node configFile = YAML::LoadFile(pathToConfig);
@@ -1387,11 +1387,23 @@ int main(int argc, char *argv[])
     ///////////////////////////////////////////////////////////////////////////////////////////////
     //////////////////////////////////////// EXTRACT SLICES ///////////////////////////////////////
     ImageType::Pointer totalBoostedImage = ReadMHA(inputDir + "totalBoostedImage.mha");
+    ImageType::Pointer floodBoostedImage = ReadMHA(inputDir + "floodBoostedImage.mha");
+    ImageType::Pointer scatterBoostedImage = ReadMHA(inputDir + "scatterBoostedImage.mha");
+    ImageType::Pointer tertiaryBoostedImage = ReadMHA(inputDir + "tertiaryBoostedImage.mha");
     std::cout << "Read Total Boosted Image" << std::endl;
-    std::vector<int> extractIndices = {1, 125, 250, 375};
-    std::string outputFileName = outputDir + "extractedSlices.mha";
+    std::vector<int> extractIndices = {1, 125, 250, 300};
 
+    std::string outputFileName = outputDir + "totalSlices.mha";
     ImageType::Pointer extractedImage = extractSlices(totalBoostedImage, extractIndices, outputFileName);
+
+    outputFileName = outputDir + "floodSlices.mha";
+    extractedImage = extractSlices(floodBoostedImage, extractIndices, outputFileName);
+
+    outputFileName = outputDir + "scatterSlices.mha";
+    extractedImage = extractSlices(scatterBoostedImage, extractIndices, outputFileName);
+
+    outputFileName = outputDir + "tertiarySlices.mha";
+    extractedImage = extractSlices(tertiaryBoostedImage, extractIndices, outputFileName);
 
     //////////////////////////////////////// EXTRACT SLICES ///////////////////////////////////////
     ///////////////////////////////////////////////////////////////////////////////////////////////

@@ -1042,8 +1042,8 @@ int main(int argc, char *argv[])
         }
     }
 
-    std::string inputDir = "/home/tunok/Work/mcDataIO_main/tests/output/IsoHaroldProstDose/";
-    std::string outputDir = "/home/tunok/Work/imgProcess_main/tests/IsoHaroldProstDose/";
+    std::string inputDir = "/home/tunok/Work/mcDataIO_main/tests/output/CylinderEllipsoid/";
+    std::string outputDir = "/home/tunok/Work/imgProcess_main/tests/CylinderEllipsoidNew/";
 
     /////////////////////////////////////////////////////////
     ///////////////////// READ CT Params ////////////////////
@@ -1160,11 +1160,11 @@ int main(int argc, char *argv[])
     ////////////////////////////////////////// Read totalBoosted ///////////////////////////////////////////////////
 
     std::vector<std::string> filePaths = {
-        inputDir + "totalBoostedImage190000000Projection9.mha",
-        inputDir + "totalBoostedImage200000000Projection9.mha",
-        inputDir + "totalBoostedImage200000000Projection9_2.mha",
-        inputDir + "totalBoostedImage200000000Projection9_3.mha",
-        inputDir + "totalBoostedImage200000000Projection9_4.mha"}; //, inputDir + "totalBoostedImage200000000Projection9_3.mha"};
+        inputDir + "totalBoostedImage290000000Projection9.mha",
+        inputDir + "totalBoostedImage350000000Projection9.mha",
+        // inputDir + "totalBoostedImage200000000Projection9_2.mha",
+        // inputDir + "totalBoostedImage200000000Projection9_3.mha",
+        inputDir + "totalBoostedImage350000000Projection9_2.mha"}; //, inputDir + "totalBoostedImage200000000Projection9_3.mha"};
     totalBoostedImage = AddMultipleImages(filePaths);
     std::cout << "Read Total Boosted Image" << std::endl;
 
@@ -1177,11 +1177,11 @@ int main(int argc, char *argv[])
     ////////////////////////////////////////// Read scatterBoosted /////////////////////////////////////////////////
 
     filePaths = {
-        inputDir + "scatterBoostedImage190000000Projection9.mha",
-        inputDir + "scatterBoostedImage200000000Projection9.mha",
-        inputDir + "scatterBoostedImage200000000Projection9_2.mha",
-        inputDir + "scatterBoostedImage200000000Projection9_3.mha",
-        inputDir + "scatterBoostedImage200000000Projection9_4.mha"}; //, inputDir + "scatterBoostedImage200000000Projection9_3.mha"};
+        inputDir + "scatterBoostedImage290000000Projection9.mha",
+        inputDir + "scatterBoostedImage350000000Projection9.mha",
+        // inputDir + "scatterBoostedImage200000000Projection9_2.mha",
+        // inputDir + "scatterBoostedImage200000000Projection9_3.mha",
+        inputDir + "scatterBoostedImage350000000Projection9_2.mha"}; //, inputDir + "scatterBoostedImage200000000Projection9_3.mha"};
     scatterBoostedImage = AddMultipleImages(filePaths);
     // SetImageDimensions(scatterBoostedImage, detectorSize[0], detectorSize[1], nProjections, PixelPitch);
     std::cout << "Read Scatter Boosted Image" << std::endl;
@@ -1195,11 +1195,11 @@ int main(int argc, char *argv[])
     ////////////////////////////////////////// Read tertiaryBoosted ////////////////////////////////////////////////
 
     filePaths = {
-        inputDir + "tertiaryBoostedImage190000000Projection9.mha",
-        inputDir + "tertiaryBoostedImage200000000Projection9.mha",
-        inputDir + "tertiaryBoostedImage200000000Projection9_2.mha",
-        inputDir + "tertiaryBoostedImage200000000Projection9_3.mha",
-        inputDir + "tertiaryBoostedImage200000000Projection9_4.mha"}; //, inputDir + "tertiaryBoostedImage200000000Projection9_3.mha"};
+        inputDir + "tertiaryBoostedImage290000000Projection9.mha",
+        inputDir + "tertiaryBoostedImage350000000Projection9.mha",
+        // inputDir + "tertiaryBoostedImage200000000Projection9_2.mha",
+        // inputDir + "tertiaryBoostedImage200000000Projection9_3.mha",
+        inputDir + "tertiaryBoostedImage350000000Projection9_2.mha"}; //, inputDir + "tertiaryBoostedImage200000000Projection9_3.mha"};
     tertiaryBoostedImage = AddMultipleImages(filePaths);
     // SetImageDimensions(tertiaryBoostedImage, detectorSize[0], detectorSize[1], nProjections, PixelPitch);
     std::cout << "Read Tertiary Boosted Image" << std::endl;
@@ -1212,11 +1212,11 @@ int main(int argc, char *argv[])
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     //////////////////////////////////////////// Read floodBoosted /////////////////////////////////////////////////
     filePaths = {
-        inputDir + "floodBoostedImage190000000Projection9.mha",
-        inputDir + "floodBoostedImage200000000Projection9.mha",
-        inputDir + "floodBoostedImage200000000Projection9_2.mha",
-        inputDir + "floodBoostedImage200000000Projection9_3.mha",
-        inputDir + "floodBoostedImage200000000Projection9_4.mha"};
+        inputDir + "floodBoostedImage290000000Projection9.mha",
+        inputDir + "floodBoostedImage350000000Projection9.mha",
+        // inputDir + "floodBoostedImage200000000Projection9_2.mha",
+        // inputDir + "floodBoostedImage200000000Projection9_3.mha",
+        inputDir + "floodBoostedImage350000000Projection9_2.mha"};
     floodBoostedImage = AddMultipleImages(filePaths);
     // SetImageDimensions(floodBoostedImage, detectorSize[0], detectorSize[1], nProjections, PixelPitch);
     std::cout << "Read Flood Boosted Image" << std::endl;
@@ -1229,11 +1229,11 @@ int main(int argc, char *argv[])
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     //////////////////////////////////////////// Read totalUnboosted /////////////////////////////////////////////////
     filePaths = {
-        inputDir + "totalUnboostedImage190000000Projection9.mha",
-        inputDir + "totalUnboostedImage200000000Projection9.mha",
-        inputDir + "totalUnboostedImage200000000Projection9_2.mha",
-        inputDir + "totalUnboostedImage200000000Projection9_3.mha",
-        inputDir + "totalUnboostedImage200000000Projection9_4.mha"};
+        inputDir + "totalUnboostedImage290000000Projection9.mha",
+        inputDir + "totalUnboostedImage350000000Projection9.mha",
+        // inputDir + "totalUnboostedImage200000000Projection9_2.mha",
+        // inputDir + "totalUnboostedImage200000000Projection9_3.mha",
+        inputDir + "totalUnboostedImage350000000Projection9_2.mha"};
     totalUnboostedImage = AddMultipleImages(filePaths);
     // SetImageDimensions(totalUnboostedImage, detectorSize[0], detectorSize[1], nProjections, PixelPitch);
     std::cout << "Read Total Unboosted Image" << std::endl;
@@ -1247,11 +1247,11 @@ int main(int argc, char *argv[])
     ////////////////////////////////////////// Read scatterBoosted /////////////////////////////////////////////////
 
     filePaths = {
-        inputDir + "scatterUnboostedImage190000000Projection9.mha",
-        inputDir + "scatterUnboostedImage200000000Projection9.mha",
-        inputDir + "scatterUnboostedImage200000000Projection9_2.mha",
-        inputDir + "scatterUnboostedImage200000000Projection9_3.mha",
-        inputDir + "scatterUnboostedImage200000000Projection9_4.mha"};
+        inputDir + "scatterUnboostedImage290000000Projection9.mha",
+        inputDir + "scatterUnboostedImage350000000Projection9.mha",
+        // inputDir + "scatterUnboostedImage200000000Projection9_2.mha",
+        // inputDir + "scatterUnboostedImage200000000Projection9_3.mha",
+        inputDir + "scatterUnboostedImage350000000Projection9_2.mha"};
     scatterUnboostedImage = AddMultipleImages(filePaths);
     // SetImageDimensions(scatterUnboostedImage, detectorSize[0], detectorSize[1], nProjections, PixelPitch);
     std::cout << "Read Scatter Unboosted Image" << std::endl;
@@ -1265,11 +1265,11 @@ int main(int argc, char *argv[])
     ////////////////////////////////////////// Read tertiaryBoosted ////////////////////////////////////////////////
 
     filePaths = {
-        inputDir + "tertiaryUnboostedImage190000000Projection9.mha",
-        inputDir + "tertiaryUnboostedImage200000000Projection9.mha",
-        inputDir + "tertiaryUnboostedImage200000000Projection9_2.mha",
-        inputDir + "tertiaryUnboostedImage200000000Projection9_3.mha",
-        inputDir + "tertiaryUnboostedImage200000000Projection9_4.mha"};
+        inputDir + "tertiaryUnboostedImage290000000Projection9.mha",
+        inputDir + "tertiaryUnboostedImage350000000Projection9.mha",
+        // inputDir + "tertiaryUnboostedImage200000000Projection9_2.mha",
+        // inputDir + "tertiaryUnboostedImage200000000Projection9_3.mha",
+        inputDir + "tertiaryUnboostedImage350000000Projection9_2.mha"};
     tertiaryUnboostedImage = AddMultipleImages(filePaths);
     // SetImageDimensions(tertiaryUnboostedImage, detectorSize[0], detectorSize[1], nProjections, PixelPitch);
     std::cout << "Read Tertiary Unboosted Image" << std::endl;
@@ -1282,11 +1282,11 @@ int main(int argc, char *argv[])
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     //////////////////////////////////////////// Read floodBoosted /////////////////////////////////////////////////
     filePaths = {
-        inputDir + "floodUnboostedImage190000000Projection9.mha",
-        inputDir + "floodUnboostedImage200000000Projection9.mha",
-        inputDir + "floodUnboostedImage200000000Projection9_2.mha",
-        inputDir + "floodUnboostedImage200000000Projection9_3.mha",
-        inputDir + "floodUnboostedImage200000000Projection9_4.mha"};
+        inputDir + "floodUnboostedImage290000000Projection9.mha",
+        inputDir + "floodUnboostedImage350000000Projection9.mha",
+        // inputDir + "floodUnboostedImage200000000Projection9_2.mha",
+        // inputDir + "floodUnboostedImage200000000Projection9_3.mha",
+        inputDir + "floodUnboostedImage350000000Projection9_2.mha"};
     floodUnboostedImage = AddMultipleImages(filePaths);
     // SetImageDimensions(floodUnboostedImage, detectorSize[0], detectorSize[1], nProjections, PixelPitch);
     std::cout << "Read Flood Unboosted Image" << std::endl;
@@ -1298,37 +1298,37 @@ int main(int argc, char *argv[])
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     //////////////////////////////////////////// Read floodBoosted /////////////////////////////////////////////////
-    filePaths = {
-        inputDir + "doseUnboosted190000000Projection9.mha",
-        inputDir + "doseUnboosted200000000Projection9.mha",
-        inputDir + "doseUnboosted200000000Projection9_2.mha",
-        inputDir + "doseUnboosted200000000Projection9_3.mha",
-        inputDir + "doseUnboosted200000000Projection9_4.mha"};
-    doseUnboostedImage = AddMultipleImages(filePaths);
-    // SetImageDimensions(floodUnboostedImage, detectorSize[0], detectorSize[1], nProjections, PixelPitch);
-    std::cout << "Read Dose Unboosted Image" << std::endl;
+    // filePaths = {
+    //     inputDir + "doseUnboosted190000000Projection9.mha",
+    //     inputDir + "doseUnboosted200000000Projection9.mha",
+    //     inputDir + "doseUnboosted200000000Projection9_2.mha",
+    //     inputDir + "doseUnboosted200000000Projection9_3.mha",
+    //     inputDir + "doseUnboosted200000000Projection9_4.mha"};
+    // doseUnboostedImage = AddMultipleImages(filePaths);
+    // // SetImageDimensions(floodUnboostedImage, detectorSize[0], detectorSize[1], nProjections, PixelPitch);
+    // std::cout << "Read Dose Unboosted Image" << std::endl;
 
-    writer->SetFileName(inputDir + "doseUnboostedImage.mha");
-    writer->SetInput(doseUnboostedImage);
-    writer->Update();
-    std::cout << "Written File Out:" + inputDir + "doseUnboostedImage.mha" << std::endl;
+    // writer->SetFileName(inputDir + "doseUnboostedImage.mha");
+    // writer->SetInput(doseUnboostedImage);
+    // writer->Update();
+    // std::cout << "Written File Out:" + inputDir + "doseUnboostedImage.mha" << std::endl;
 
-    ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    //////////////////////////////////////////// Read floodBoosted /////////////////////////////////////////////////
-    filePaths = {
-        inputDir + "doseBoosted190000000Projection9.mha",
-        inputDir + "doseBoosted200000000Projection9.mha",
-        inputDir + "doseBoosted200000000Projection9_2.mha",
-        inputDir + "doseBoosted200000000Projection9_3.mha",
-        inputDir + "doseBoosted200000000Projection9_4.mha"};
-    doseBoostedImage = AddMultipleImages(filePaths);
-    // SetImageDimensions(floodUnboostedImage, detectorSize[0], detectorSize[1], nProjections, PixelPitch);
-    std::cout << "Read Dose Boosted Image" << std::endl;
+    // ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // //////////////////////////////////////////// Read floodBoosted /////////////////////////////////////////////////
+    // filePaths = {
+    //     inputDir + "doseBoosted190000000Projection9.mha",
+    //     inputDir + "doseBoosted200000000Projection9.mha",
+    //     inputDir + "doseBoosted200000000Projection9_2.mha",
+    //     inputDir + "doseBoosted200000000Projection9_3.mha",
+    //     inputDir + "doseBoosted200000000Projection9_4.mha"};
+    // doseBoostedImage = AddMultipleImages(filePaths);
+    // // SetImageDimensions(floodUnboostedImage, detectorSize[0], detectorSize[1], nProjections, PixelPitch);
+    // std::cout << "Read Dose Boosted Image" << std::endl;
 
-    writer->SetFileName(inputDir + "doseBoostedImage.mha");
-    writer->SetInput(doseBoostedImage);
-    writer->Update();
-    std::cout << "Written File Out:" + inputDir + "doseBoostedImage.mha" << std::endl;
+    // writer->SetFileName(inputDir + "doseBoostedImage.mha");
+    // writer->SetInput(doseBoostedImage);
+    // writer->Update();
+    // std::cout << "Written File Out:" + inputDir + "doseBoostedImage.mha" << std::endl;
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /////////////////////////////// Add in the tertiary to the unboosted iamge /////////////////////////////////////
@@ -1341,6 +1341,30 @@ int main(int argc, char *argv[])
     // totalUnboostedImage = addFilter->GetOutput();
     // totalUnboostedImage->DisconnectPipeline();
     // this is done specially only because of the small issue (now resolved) in the simulation that propagated into the big simulation results
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    //////////////////////////////////////// EXTRACT SLICES ///////////////////////////////////////
+    // ImageType::Pointer totalBoostedImage = ReadMHA(inputDir + "totalBoostedImage.mha");
+    // ImageType::Pointer floodBoostedImage = ReadMHA(inputDir + "floodBoostedImage.mha");
+    // ImageType::Pointer scatterBoostedImage = ReadMHA(inputDir + "scatterBoostedImage.mha");
+    // ImageType::Pointer tertiaryBoostedImage = ReadMHA(inputDir + "tertiaryBoostedImage.mha");
+    // std::cout << "Read Total Boosted Image" << std::endl;
+    // std::vector<int> extractIndices = {1, 125, 250, 300};
+
+    // std::string outputFileName = outputDir + "totalSlices.mha";
+    // ImageType::Pointer extractedImage = extractSlices(totalBoostedImage, extractIndices, outputFileName);
+
+    // outputFileName = outputDir + "floodSlices.mha";
+    // extractedImage = extractSlices(floodBoostedImage, extractIndices, outputFileName);
+
+    // outputFileName = outputDir + "scatterSlices.mha";
+    // extractedImage = extractSlices(scatterBoostedImage, extractIndices, outputFileName);
+
+    // outputFileName = outputDir + "tertiarySlices.mha";
+    // extractedImage = extractSlices(tertiaryBoostedImage, extractIndices, outputFileName);
+
+    //////////////////////////////////////// EXTRACT SLICES ///////////////////////////////////////
+    ///////////////////////////////////////////////////////////////////////////////////////////////
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////

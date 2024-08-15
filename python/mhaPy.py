@@ -1,7 +1,6 @@
 import SimpleITK as sitk
 import matplotlib.pyplot as plt
 import numpy as np
-import imageio
 
 
 def apply_window_level(np_image, window, level):
@@ -70,18 +69,14 @@ def save_figure(path, title, xlabel, ylabel):
 
 
 # READ IN IMAGE IN ITK_IMAGE
-imagePath = '/home/tunok/Work/imgProcess_main/tests/IsoHaroldProstNew/primaryBoostedImage.mha'
-imagePath = '/home/tunok/Work/imgProcess_main/tests/IsoHaroldProst/totalBoostedImage.mha'
-imagePath = '/home/tunok/Work/mcDataIO_main/tests/output/IsoHaroldProstUniform/totalBoostedImage300000000Projection9_2.mha'
-imagePath = '/home/tunok/Work/imgProcess_main/tests/IsoHaroldProstUniform/totalBoostedImage.mha'
-imagePath = '/home/tunok/Work/mcDataIO_main/tests/output/totalBoostedImage20000000Projection1.mha'
-imagePath = '/home/tunok/Work/imgProcess_main/tests/CylinderEllipsoidNew/tertiaryUnboostedImage.mha'
-imagePath = '/home/tunok/Work/imgProcess_main/tests/IsoHaroldProstTest/totalBoostedImage.mha'
-imagePath = '/home/tunok/Work/mcDataIO_main/tests/output/scatterBoostedImage20000000Projection1.mha'
-imagePath = '/home/tunok/Work/imgProcess_main/tests/CylinderEllipsoidTest/scatterEst.mha'
-imagePath = '/home/tunok/Work/Fresco-21.1.0-CustomLinuxBuild/Examples/simulate_and_reconstruct/totalBoostedVolume.mha'
+imagePath = '/home/tunok/Work/imgProcess_main/tests/IsoHaroldProstTest/totalSlices.mha'
+outputPath = '/home/tunok/Work/imgProcess_main/tests/images/'
 itkImage = sitk.ReadImage(imagePath)
 npImage = sitk.GetArrayFromImage(itkImage)
+
+##################################################################
+############ Check image shape directly from npImage #############
+print("Shape of npImage:", npImage.shape)
 
 with open(imagePath, 'rb') as file:
     for _ in range(10):
@@ -89,78 +84,128 @@ with open(imagePath, 'rb') as file:
         print(line.strip())
         if line.strip() == "ElementDataFile = LOCAL":
             break
+############ Check image shape directly from npImage #############
+##################################################################
 
 # SELECT IMAGE SLICE, COORDINATES
-sliceIndex = 100  # for isoharold prost reconstructed volume, take slice 55
+sliceIndex = 0  # for isoharold prost reconstructed volume, take slice 55
 rowIndex = int(npImage.shape[1]/2)
-rowRange = 70
-colIndex = int(npImage.shape[2]*3/4)
-colRange = 50
+colIndex = int(npImage.shape[2]/2)
 
 # SHOW IMAGE SLICE
 # NPIMAGE(SLICE, ROW, COLUMN)
 imageSlice = npImage[sliceIndex, :, :]
 volumeSlice = npImage[:, sliceIndex, :]
 
+#########################################################################################
+#################################### For Dose Volume ####################################
+# # Flatten the 3D array to a 1D array
+# flattened_array = npImage.flatten()
+
+# sizeX = npImage.shape[2]
+# sizeY = npImage.shape[1]
+# sizeZ = npImage.shape[0]
+
+# print("Shape of npImage x:", sizeX)
+# print("Shape of npImage y:", sizeY)
+# print("Shape of npImage z:", sizeZ)
+
+# # Reshape the flattened array back to 3D array with new dimensions - this is for Dose Volume
+# reshaped_array = flattened_array.reshape(sizeZ, sizeY, sizeX)
+# # doseSlice = npImage[:, :, sliceIndex]
+
+# # Access a specific slice as needed
+# doseSlice = reshaped_array[:, :, sliceIndex]
+#################################### For Dose Volume ####################################
+#########################################################################################
 
 # Adjust window/level values
 window = 0.1  # Example window value
 level = 0.01  # Example level value
-adjustedSlice = apply_window_level(volumeSlice, window, level)
+adjustedSlice = apply_window_level(imageSlice, window, level)
 
-print("Extracting and saving volume/image slice")
-img = plt.imshow(volumeSlice, cmap='gray')
+img = plt.imshow(imageSlice, cmap='gray')
 plt.title(f'Slice Index: {sliceIndex}')
 plt.colorbar(img, label='Signal Level')  # Add a color bar with a label
 plt.axis('off')
 plt.xlabel('X Label')
 plt.ylabel('Y Label')
 # Draw a horizontal line on the nth row in blue color
-# plt.axhline(y=rowIndex, color='orange', linestyle='dashdot')
-# plt.axhline(y=rowIndex+rowRange, color='b', linestyle='dashdot')
+plt.axhline(y=rowIndex, color='orange', linestyle='dashdot')
 # Draw a vertical line on the mth column in blue color
-# plt.axvline(x=colIndex, color='b', linestyle='dashdot')
-# plt.axvline(x=colIndex+colRange, color='b', linestyle='dashdot')
-
-plt.savefig('/home/tunok/Work/Fresco-21.1.0-CustomLinuxBuild/Examples/simulate_and_reconstruct/totalBoostedVolume.png')
+plt.axvline(x=colIndex, color='b', linestyle='dashdot')
+plt.savefig(outputPath + 'totalBoostedImage.png')
 plt.close()
-print("Saved image as: ... /Examples/simulate_and_reconstruct/totalBoostedVolume.png")
+print('Saved image as:' + outputPath + 'totalBoostedImage.png')
+
 
 # PLOTTING A ROW OR A COLUMN
 rowData = npImage[sliceIndex, rowIndex, :]
+
+# Determine the min and max intensity across all profiles for consistent y-axis scaling
 min_intensity = np.min(rowData)
 max_intensity = np.max(rowData)
-# Now plot the row data
-plt.plot(rowData, color='orange')
-plt.title(f'Row Data at Slice {sliceIndex}, Row {rowIndex}')
+
+# Create the plot
+plt.figure(figsize=(10, 5))
+plt.plot(rowData, color='orange', label='Signal')
+
+# Add title, labels, legend, and set the y-axis limit
+plt.title(f'Row Data at Slice {sliceIndex}, Column {colIndex}')
 plt.xlabel('Col Index')
 plt.ylabel('Intensity Value')
-plt.ylim(min_intensity, max_intensity)  # Set the y-axis range
-plt.savefig(
-    '/home/tunok/Work/Fresco-21.1.0-CustomLinuxBuild/Examples/simulate_and_reconstruct/rowData.png')
-plt.close()
-print("Saved image as: ... /Examples/simulate_and_reconstruct/rowData.png")
+plt.ylim(min_intensity, max_intensity)
+plt.legend()
 
-# PLOTTING A ROW OR A COLUMN
+# Save the plot to a file
+plt.savefig(outputPath + 'rowData.png')
+plt.close()
+print('Saved image as:' + outputPath + 'rowData.png')
+
+
+# PLOTTING A COLUMN FROM MULTIPLE IMAGES
 colData = npImage[sliceIndex, :, colIndex]
+
+# Determine the min and max intensity across all profiles for consistent y-axis scaling
 min_intensity = np.min(colData)
 max_intensity = np.max(colData)
-# Now plot the row data
-plt.plot(colData, color='b')
-plt.title(f'Col Data at Slice {sliceIndex}, Col {colIndex}')
+
+# Create the plot
+plt.figure(figsize=(10, 5))
+plt.plot(colData, color='b', label='Signal')
+
+# Add title, labels, legend, and set the y-axis limit
+plt.title(f'Column Data at Slice {sliceIndex}, Column {colIndex}')
 plt.xlabel('Row Index')
 plt.ylabel('Intensity Value')
-plt.ylim(min_intensity, max_intensity)  # Set the y-axis range
-plt.savefig(
-    '/home/tunok/Work/Fresco-21.1.0-CustomLinuxBuild/Examples/simulate_and_reconstruct/colData.png')
+plt.ylim(min_intensity, max_intensity)
+plt.legend()
+
+# Save the plot to a file
+plt.savefig(outputPath + 'colData.png')
 plt.close()
-print("Saved image as: ... /Examples/simulate_and_reconstruct/colData.png")
+print('Saved image as:' + outputPath + 'colData.png')
+
+
+# # PLOTTING A ROW OR A COLUMN
+# colData = npImage[sliceIndex, :, colIndex]
+# min_intensity = np.min(colData)
+# max_intensity = np.max(colData)
+# # Now plot the row data
+# plt.plot(colData, color='b')
+# plt.title(f'Col Data at Slice {sliceIndex}, Col {colIndex}')
+# plt.xlabel('Row Index')
+# plt.ylabel('Intensity Value')
+# plt.ylim(min_intensity, max_intensity)  # Set the y-axis range
+# plt.savefig('/home/tunok/Work/Fresco-21.1.0-CustomLinuxBuild/Examples/simulate_and_reconstruct/colData.png')
+# plt.close()
+# print("Saved image as: ... /Examples/simulate_and_reconstruct/colData.png")
 
 
 # Compute Local Noise
-k = 2   # Window size
+k = 7   # Window size
 local_noise = noiseImage(volumeSlice, k)
-plt.figure(figsize=(10, 8))  # Optional: adjust the figure size as needed
+plt.figure(figsize=(10, 10))  # Optional: adjust the figure size as needed
 # Save the AxesImage returned by imshow
 img = plt.imshow(local_noise, cmap='viridis')
 plt.title(f'Slice Index: {sliceIndex}')
@@ -168,10 +213,9 @@ plt.colorbar(img, label='Noise Level')  # Add a color bar with a label
 plt.axis('off')  # Turn off the axis numbers and ticks
 plt.xlabel('X Label')
 plt.ylabel('Y Label')
-plt.savefig(
-    '/home/tunok/Work/Fresco-21.1.0-CustomLinuxBuild/Examples/simulate_and_reconstruct/Noise.png')
+plt.savefig(outputPath + 'Noise.png')
 plt.close()
-print("Saved image as: ... /Examples/simulate_and_reconstruct/Noise.png")
+print('Saved image as:' + outputPath + 'Noise.png')
 
 
 # # Calculate the average value of the image slice

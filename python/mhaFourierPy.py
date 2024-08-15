@@ -69,9 +69,9 @@ def save_figure(path, title, xlabel, ylabel):
     print(f"Saved image as: {path}")
 
 
-# Read and Load the .mha image file and convert in to numpy array.
-imagePath = '/home/tunok/Work/mcDataIO_main/tests/output/IsoHaroldProst/totalBoostedImage250000000Projection9.mha'
-imagePath = '/home/tunok/Work/imgProcess_main/tests/CylinderEllipsoidNew/totalBoostedImage.mha'
+# READ IN IMAGE IN ITK_IMAGE
+imagePath = '/home/tunok/Work/imgProcess_main/tests/IsoHaroldProstTest/totalSlices.mha'
+outputPath = '/home/tunok/Work/imgProcess_main/tests/images/'
 itkImage = sitk.ReadImage(imagePath)
 npImage = sitk.GetArrayFromImage(itkImage)
 
@@ -84,37 +84,30 @@ with open(imagePath, 'rb') as file:
             break
 
 # SELECT IMAGE SLICE, COORDINATES
-sliceIndex = 100
+sliceIndex = 1  # for isoharold prost reconstructed volume, take slice 55
 rowIndex = int(npImage.shape[1]/2)
-rowRange = 70
 colIndex = int(npImage.shape[2]/2)
-colRange = 50
 
-# Get image slice
-imageSlice = npImage[sliceIndex, :, :]  # for projection
-volumeSlice = npImage[:, sliceIndex, :]  # for reconstructed volumes
+# NPIMAGE(SLICE, ROW, COLUMN)
+imageSlice = npImage[sliceIndex, :, :]
+volumeSlice = npImage[:, sliceIndex, :]
 
 
 # Adjust window/level values
 window = 0.1  # Example window value
 level = 0.01  # Example level value
-adjustedSlice = apply_window_level(volumeSlice, window, level)
+adjustedSlice = apply_window_level(imageSlice, window, level)
 
 # Apply Fourier Transform
-f_transform = np.fft.fftshift(np.fft.fft2(imageSlice))
-f_magnitude = np.abs(f_transform)
+# np.fft.fftshift function then shifts the zero-frequency component to the center of the spectrum
+fTransform = np.fft.fftshift(np.fft.fft2(imageSlice))
+fMagnitude = np.abs(fTransform)
+fLogMagnitude = np.log(fMagnitude + 1)
 
-# Log to enhance visibility of features
-f_log_magnitude = np.log(f_magnitude + 1)
-
-# Use a smaller constant with log1p for potentially better detail visibility
-f_log_magnitude = np.log1p(f_magnitude)
-
-# Normalize the Fourier magnitude
-normalized_f_magnitude = f_magnitude / np.max(f_magnitude)
-
-# Apply logarithmic scaling to the normalized magnitude
-f_log_magnitude = np.log1p(normalized_f_magnitude)
+# To perform the inverse Fourier transform:
+recoveredImage = np.fft.ifft2(np.fft.ifftshift(fTransform))
+# Take the absolute value to handle complex numbers
+recoveredImage = np.abs(recoveredImage)
 
 
 # Plotting
@@ -128,13 +121,15 @@ plt.colorbar()
 
 # Subplot 2: Fourier Transformed Image
 plt.subplot(1, 2, 2)
-plt.imshow(f_log_magnitude, cmap='viridis')
+plt.imshow(recoveredImage, cmap='gray')
 plt.title('Fourier Transform Magnitude Spectrum')
 # Adjust the upper limit to 10% of the max value
-plt.clim(0, f_log_magnitude.max() * 0.1)
+# plt.clim(0, fLogMagnitude.max() * 0.1)
 plt.colorbar()
 
+
 # Save figure
-plt.savefig('/home/tunok/Work/imgProcess_main/tests/others/scatterFourier.png')
+plt.tight_layout()  # Adjust layout to not overlap subplots
+plt.savefig(outputPath + 'fourierTransformedImage.png')
 plt.close()
-print("Saved image as: ... /imgProcess_main/tests/others/scatterFourier.png")
+print('Saved image as:' + outputPath + 'fourierTransformedImage.png')
